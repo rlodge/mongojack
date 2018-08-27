@@ -16,6 +16,10 @@
  */
 package org.mongojack.mock;
 
+import org.bson.types.ObjectId;
+
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -67,6 +71,9 @@ public class MockEmbeddedObject {
     public String value;
     public List<String> list;
     public List<MockEmbeddedListElement> objectList;
+    public Date date;
+    public Calendar calendar;
+    public ObjectId objectId;
 
     public MockEmbeddedObject() {
     }
@@ -81,6 +88,9 @@ public class MockEmbeddedObject {
                 "value='" + value + '\'' +
                 ", list=" + list +
                 ", objectList=" + objectList +
+                ", date=" + date +
+                ", calendar=" + calendar +
+                ", objectId=" + objectId +
                 '}';
     }
 
@@ -104,6 +114,9 @@ public class MockEmbeddedObject {
         if (value != null ? !value.equals(that.value) : that.value != null) {
             return false;
         }
+        if (date != null ? !date.equals(that.date) : that.date != null) return false;
+        if (calendar != null ? !calendar.equals(that.calendar) : that.calendar != null) return false;
+        if (objectId != null ? !objectId.equals(that.objectId) : that.objectId != null) return false;
 
         return true;
     }
@@ -113,6 +126,9 @@ public class MockEmbeddedObject {
         int result = value != null ? value.hashCode() : 0;
         result = 31 * result + (list != null ? list.hashCode() : 0);
         result = 31 * result + (objectList != null ? objectList.hashCode() : 0);
+        result = 31 * result + (date != null ? date.hashCode() : 0);
+        result = 31 * result + (calendar != null ? calendar.hashCode() : 0);
+        result = 31 * result + (objectId != null ? objectId.hashCode() : 0);
         return result;
     }
 }

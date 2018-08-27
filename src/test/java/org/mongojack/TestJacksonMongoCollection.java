@@ -16,27 +16,25 @@
  */
 package org.mongojack;
 
-import static org.hamcrest.Matchers.contains;
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.hasItems;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.notNullValue;
-import static org.hamcrest.Matchers.nullValue;
-import static org.hamcrest.collection.IsCollectionWithSize.hasSize;
-import static org.junit.Assert.assertThat;
+import com.mongodb.WriteConcern;
+import org.bson.Document;
+import org.bson.types.ObjectId;
+import org.hamcrest.Matchers;
+import org.junit.Before;
+import org.junit.Test;
+import org.mongojack.mock.MockEmbeddedObject;
+import org.mongojack.mock.MockObject;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
+import java.util.TimeZone;
 
-import com.mongodb.WriteConcern;
-import com.mongodb.client.FindIterable;
-import org.bson.Document;
-import org.hamcrest.Matchers;
-import org.junit.Before;
-import org.junit.Ignore;
-import org.junit.Test;
-import org.mongojack.mock.MockObject;
+import static org.hamcrest.Matchers.*;
+import static org.hamcrest.collection.IsCollectionWithSize.hasSize;
+import static org.junit.Assert.*;
 
 public class TestJacksonMongoCollection extends MongoDBTestBase {
     private JacksonMongoCollection<MockObject> coll;
@@ -50,12 +48,23 @@ public class TestJacksonMongoCollection extends MongoDBTestBase {
     public void testQuery() {
         MockObject o1 = new MockObject("1", "ten", 10);
         MockObject o2 = new MockObject("2", "ten", 10);
+        o2.object = getMockEmbeddedObject();
+        o2.complexList = new ArrayList<>();
+        o2.complexList.add(getMockEmbeddedObject());
         coll.insert(o1, o2, new MockObject("twenty", 20));
 
         List<MockObject> results = coll
                 .find(new Document("string", "ten")).into(new ArrayList<>());
         assertThat(results, hasSize(2));
         assertThat(results, contains(o1, o2));
+    }
+
+    private MockEmbeddedObject getMockEmbeddedObject() {
+        final MockEmbeddedObject eo = new MockEmbeddedObject("foo");
+        eo.date = new Date();
+        eo.calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+        eo.objectId = new ObjectId();
+        return eo;
     }
 
     @Test
