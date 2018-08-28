@@ -3,7 +3,7 @@
 
   <groupId>org.mongojack</groupId>
   <artifactId>mongojack</artifactId>
-  <version>2.9.4-BUILD1-C</version>
+  <version>2.9.4-BUILD2-C</version>
   <packaging>bundle</packaging>
 
   <name>MongoJack</name>
