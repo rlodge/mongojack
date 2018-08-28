@@ -59,6 +59,23 @@ public class TestJacksonMongoCollection extends MongoDBTestBase {
         assertThat(results, contains(o1, o2));
     }
 
+    @Test
+    public void testSaveAndQuery() {
+        MockObject o1 = new MockObject("1", "ten", 10);
+        MockObject o2 = new MockObject("2", "ten", 10);
+        o2.object = getMockEmbeddedObject();
+        o2.complexList = new ArrayList<>();
+        o2.complexList.add(getMockEmbeddedObject());
+        coll.save(o1);
+        coll.save(o2);
+        coll.save(new MockObject("twenty", 20));
+
+        List<MockObject> results = coll
+            .find(new Document("string", "ten")).into(new ArrayList<>());
+        assertThat(results, hasSize(2));
+        assertThat(results, contains(o1, o2));
+    }
+
     private MockEmbeddedObject getMockEmbeddedObject() {
         final MockEmbeddedObject eo = new MockEmbeddedObject("foo");
         eo.date = new Date();
