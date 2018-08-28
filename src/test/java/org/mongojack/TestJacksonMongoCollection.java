@@ -17,20 +17,17 @@
 package org.mongojack;
 
 import com.mongodb.WriteConcern;
+import com.mongodb.client.result.UpdateResult;
 import org.bson.Document;
-import org.bson.types.ObjectId;
 import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.Test;
-import org.mongojack.mock.MockEmbeddedObject;
 import org.mongojack.mock.MockObject;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
-import java.util.TimeZone;
 
 import static org.hamcrest.Matchers.*;
 import static org.hamcrest.collection.IsCollectionWithSize.hasSize;
@@ -48,9 +45,6 @@ public class TestJacksonMongoCollection extends MongoDBTestBase {
     public void testQuery() {
         MockObject o1 = new MockObject("1", "ten", 10);
         MockObject o2 = new MockObject("2", "ten", 10);
-        o2.object = getMockEmbeddedObject();
-        o2.complexList = new ArrayList<>();
-        o2.complexList.add(getMockEmbeddedObject());
         coll.insert(o1, o2, new MockObject("twenty", 20));
 
         List<MockObject> results = coll
@@ -59,12 +53,28 @@ public class TestJacksonMongoCollection extends MongoDBTestBase {
         assertThat(results, contains(o1, o2));
     }
 
-    private MockEmbeddedObject getMockEmbeddedObject() {
-        final MockEmbeddedObject eo = new MockEmbeddedObject("foo");
-        eo.date = new Date();
-        eo.calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
-        eo.objectId = new ObjectId();
-        return eo;
+    @Test
+    public void testSaveAndQuery() {
+        MockObject o1 = new MockObject("1", "ten", 10);
+        MockObject o2 = new MockObject("2", "ten", 10);
+        coll.save(o1);
+        coll.save(o2);
+
+        MockObject o3 = new MockObject("twenty", 20);
+        o3.date = new Date();
+        UpdateResult saveResult = coll.save(o3);
+        assertThat(saveResult.getUpsertedId(), notNullValue());
+        assertThat(o3._id, notNullValue());
+
+        o3.string = "ten";
+        coll.save(o3);
+
+        List<MockObject> results = coll
+            .find(new Document("string", "ten")).into(new ArrayList<>());
+        assertThat(results, hasSize(3));
+        assertThat(results, contains(o1, o2, o3));
+
+        assertThat(coll.findOne(DBQuery.is("_id", o3._id)), equalTo(o3));
     }
 
     @Test
