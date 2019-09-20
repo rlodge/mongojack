@@ -4,7 +4,7 @@
 
   <groupId>org.mongojack</groupId>
   <artifactId>mongojack</artifactId>
-  <version>2.11.0-rc0-C</version>
+  <version>2.11.0-C</version>
   <packaging>bundle</packaging>
 
   <name>MongoJack</name>
