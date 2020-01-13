@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DBRefDeserializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal</a> &gt; <span class="el_source">DBRefDeserializer.java</span></div><h1>DBRefDeserializer.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2011 VZ Netzwerke Ltd
+ * Copyright 2014 devbliss GmbH
+ * 
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.mongojack.internal;
+
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import org.mongojack.DBRef;
+
+import java.io.IOException;
+
+/**
+ * Deserializer for DBRefs
+ * 
+ * @author James Roper
+ * @since 1.2
+ */
+public class DBRefDeserializer&lt;T, K&gt; extends JsonDeserializer&lt;DBRef&gt; {
+
+    private final JavaType type;
+    private final JavaType keyType;
+    private final JsonDeserializer&lt;K&gt; keyDeserializer;
+
+    public DBRefDeserializer(JavaType type, JavaType keyType) {
+<span class="fc" id="L42">        this(type, keyType, null);</span>
+<span class="fc" id="L43">    }</span>
+
+    public DBRefDeserializer(JavaType type, JavaType keyType,
+<span class="fc" id="L46">            JsonDeserializer&lt;K&gt; keyDeserializer) {</span>
+<span class="fc" id="L47">        this.type = type;</span>
+<span class="fc" id="L48">        this.keyType = keyType;</span>
+<span class="fc" id="L49">        this.keyDeserializer = keyDeserializer;</span>
+<span class="fc" id="L50">    }</span>
+
+    @Override
+    public DBRef deserialize(JsonParser jp, DeserializationContext ctxt)
+            throws IOException, JsonProcessingException {
+<span class="fc" id="L55">        K id = null;</span>
+<span class="fc" id="L56">        String collectionName = null;</span>
+<span class="fc" id="L57">        String databaseName = null;</span>
+<span class="fc" id="L58">        JsonToken token = jp.getCurrentToken();</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        if (token == JsonToken.VALUE_NULL) {</span>
+<span class="nc" id="L60">            return null;</span>
+        }
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">        if (token == JsonToken.VALUE_EMBEDDED_OBJECT) {</span>
+            // Someones already kindly decoded it for us
+<span class="nc" id="L64">            Object object = jp.getEmbeddedObject();</span>
+<span class="nc bnc" id="L65" title="All 2 branches missed.">            if (object instanceof com.mongodb.DBRef) {</span>
+<span class="nc bnc" id="L66" title="All 2 branches missed.">                if (keyDeserializer != null) {</span>
+<span class="nc" id="L67">                    id = keyDeserializer.deserialize(jp, ctxt);</span>
+                } else {
+<span class="nc" id="L69">                    id = (K) ((com.mongodb.DBRef) object).getId();</span>
+                }
+<span class="nc" id="L71">                collectionName = ((com.mongodb.DBRef) object).getCollectionName();</span>
+<span class="nc" id="L72">                databaseName = ((com.mongodb.DBRef) object).getDatabaseName();</span>
+            } else {
+<span class="nc" id="L74">                throw ctxt.instantiationException(DBRef.class,</span>
+                        &quot;Don't know what to do with embedded object: &quot;
+                                + object);
+            }
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        } else if (token == JsonToken.START_OBJECT) {</span>
+<span class="fc" id="L79">            token = jp.nextValue();</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            while (token != JsonToken.END_OBJECT) {</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                if (jp.getCurrentName().equals(&quot;$id&quot;)) {</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">                    if (keyDeserializer != null) {</span>
+<span class="fc" id="L83">                        id = keyDeserializer.deserialize(jp, ctxt);</span>
+                    } else {
+<span class="fc" id="L85">                        id = (K) jp.getEmbeddedObject();</span>
+                    }
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">                } else if (jp.getCurrentName().equals(&quot;$ref&quot;)) {</span>
+<span class="fc" id="L88">                    collectionName = jp.getText();</span>
+<span class="nc bnc" id="L89" title="All 2 branches missed.">                } else if (jp.getCurrentName().equals(&quot;$db&quot;)) {</span>
+<span class="nc" id="L90">                    databaseName = jp.getText();</span>
+                } else {
+                    // Ignore the rest
+                }
+<span class="fc" id="L94">                token = jp.nextValue();</span>
+            }
+        }
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        if (id == null) {</span>
+<span class="nc" id="L98">            return null;</span>
+        }
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">        if (collectionName == null) {</span>
+<span class="nc" id="L101">            throw ctxt.instantiationException(DBRef.class,</span>
+                    &quot;DBRef contains no collection name&quot;);
+        }
+
+<span class="fc" id="L105">        return new DBRef&lt;&gt;(id, type.getRawClass(), collectionName, databaseName);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

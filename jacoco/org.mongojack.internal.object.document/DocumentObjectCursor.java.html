@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocumentObjectCursor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal.object.document</a> &gt; <span class="el_source">DocumentObjectCursor.java</span></div><h1>DocumentObjectCursor.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2011 VZ Netzwerke Ltd
+ * Copyright 2014 devbliss GmbH
+ * 
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.mongojack.internal.object.document;
+
+import java.math.BigDecimal;
+import java.util.Collection;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.UUID;
+
+import org.bson.BSONObject;
+import org.bson.Document;
+import org.bson.types.ObjectId;
+
+import com.fasterxml.jackson.core.JsonStreamContext;
+import com.fasterxml.jackson.core.JsonToken;
+import com.mongodb.DBRef;
+
+/**
+ * Helper class for MongoDbObjectJsonParser
+ * 
+ * @author James Roper
+ * @since 1.0
+ */
+abstract class DocumentObjectCursor extends JsonStreamContext {
+    /**
+     * Parent cursor of this cursor, if any; null for root cursors.
+     */
+    private final DocumentObjectCursor parent;
+
+    public DocumentObjectCursor(int contextType, DocumentObjectCursor p) {
+<span class="nc" id="L47">        super();</span>
+<span class="nc" id="L48">        _type = contextType;</span>
+<span class="nc" id="L49">        _index = -1;</span>
+<span class="nc" id="L50">        parent = p;</span>
+<span class="nc" id="L51">    }</span>
+
+    // note: co-variant return type
+    @Override
+    public final DocumentObjectCursor getParent() {
+<span class="nc" id="L56">        return parent;</span>
+    }
+
+    @Override
+    public abstract String getCurrentName();
+
+    public abstract JsonToken nextToken();
+
+    public abstract JsonToken endToken();
+
+    public abstract Object currentNode();
+
+    public boolean currentHasChildren() {
+<span class="nc" id="L69">        Object o = currentNode();</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">        if (o instanceof Collection) {</span>
+<span class="nc bnc" id="L71" title="All 2 branches missed.">            return !((Collection) o).isEmpty();</span>
+<span class="nc bnc" id="L72" title="All 2 branches missed.">        } else if (o instanceof Map) {</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">            return !((Map) o).isEmpty();</span>
+        }
+<span class="nc bnc" id="L75" title="All 2 branches missed.">        return currentNode() != null;</span>
+    }
+
+    /**
+     * Method called to create a new context for iterating all contents of the
+     * currentFieldName structured value (JSON array or object)
+     * 
+     * @return A cursor for the children
+     */
+    public final DocumentObjectCursor iterateChildren() {
+<span class="nc" id="L85">        Object n = currentNode();</span>
+<span class="nc bnc" id="L86" title="All 2 branches missed.">        if (n == null) {</span>
+<span class="nc" id="L87">            throw new IllegalStateException(&quot;No current node&quot;);</span>
+        }
+<span class="nc bnc" id="L89" title="All 2 branches missed.">        if (n instanceof Iterable) { // false since we have already returned</span>
+                                     // START_ARRAY
+<span class="nc" id="L91">            return new ArrayCursor((Iterable) n, this);</span>
+        }
+<span class="nc bnc" id="L93" title="All 2 branches missed.">        if (n instanceof Document) {</span>
+<span class="nc" id="L94">            return new ObjectCursor((Document) n, this);</span>
+        }
+<span class="nc" id="L96">        throw new IllegalStateException(&quot;Current node of type &quot;</span>
+<span class="nc" id="L97">                + n.getClass().getName());</span>
+    }
+
+    /**
+     * Cursor used for traversing iterables
+     */
+    protected final static class ArrayCursor extends DocumentObjectCursor {
+        Iterator&lt;?&gt; contents;
+
+        Object currentNode;
+
+        public ArrayCursor(Iterable n, DocumentObjectCursor p) {
+<span class="nc" id="L109">            super(JsonStreamContext.TYPE_ARRAY, p);</span>
+<span class="nc" id="L110">            contents = n.iterator();</span>
+<span class="nc" id="L111">        }</span>
+
+        @Override
+        public String getCurrentName() {
+<span class="nc" id="L115">            return null;</span>
+        }
+
+        @Override
+        public JsonToken nextToken() {
+<span class="nc bnc" id="L120" title="All 2 branches missed.">            if (!contents.hasNext()) {</span>
+<span class="nc" id="L121">                currentNode = null;</span>
+<span class="nc" id="L122">                return null;</span>
+            }
+<span class="nc" id="L124">            currentNode = contents.next();</span>
+<span class="nc" id="L125">            return getToken(currentNode);</span>
+        }
+
+        @Override
+        public JsonToken endToken() {
+<span class="nc" id="L130">            return JsonToken.END_ARRAY;</span>
+        }
+
+        @Override
+        public Object currentNode() {
+<span class="nc" id="L135">            return currentNode;</span>
+        }
+    }
+
+    /**
+     * Cursor used for traversing non-empty JSON Object nodes
+     */
+    protected final static class ObjectCursor extends DocumentObjectCursor {
+        Iterator&lt;String&gt; fields;
+        Document object;
+        String currentFieldName;
+
+        boolean needField;
+
+        public ObjectCursor(Document object, DocumentObjectCursor p) {
+<span class="nc" id="L150">            super(JsonStreamContext.TYPE_OBJECT, p);</span>
+<span class="nc" id="L151">            this.object = object;</span>
+<span class="nc" id="L152">            fields = object.keySet().iterator();</span>
+<span class="nc" id="L153">            needField = true;</span>
+<span class="nc" id="L154">        }</span>
+
+        @Override
+        public String getCurrentName() {
+<span class="nc" id="L158">            return currentFieldName;</span>
+        }
+
+        @Override
+        public JsonToken nextToken() {
+            // Need a new entry?
+<span class="nc bnc" id="L164" title="All 2 branches missed.">            if (needField) {</span>
+<span class="nc bnc" id="L165" title="All 2 branches missed.">                if (!fields.hasNext()) {</span>
+<span class="nc" id="L166">                    currentFieldName = null;</span>
+<span class="nc" id="L167">                    return null;</span>
+                }
+<span class="nc" id="L169">                needField = false;</span>
+<span class="nc" id="L170">                currentFieldName = fields.next();</span>
+<span class="nc" id="L171">                return JsonToken.FIELD_NAME;</span>
+            }
+<span class="nc" id="L173">            needField = true;</span>
+<span class="nc" id="L174">            return getToken(object.get(currentFieldName));</span>
+        }
+
+        @Override
+        public JsonToken endToken() {
+<span class="nc" id="L179">            return JsonToken.END_OBJECT;</span>
+        }
+
+        @Override
+        public Object currentNode() {
+<span class="nc bnc" id="L184" title="All 2 branches missed.">            return (currentFieldName == null) ? null : object</span>
+<span class="nc" id="L185">                    .get(currentFieldName);</span>
+        }
+
+    }
+
+    private static JsonToken getToken(Object o) {
+<span class="nc bnc" id="L191" title="All 2 branches missed.">        if (o == null) {</span>
+<span class="nc" id="L192">            return JsonToken.VALUE_NULL;</span>
+<span class="nc bnc" id="L193" title="All 2 branches missed.">        } else if (o instanceof Iterable) {</span>
+<span class="nc" id="L194">            return JsonToken.START_ARRAY;</span>
+<span class="nc bnc" id="L195" title="All 2 branches missed.">        } else if (o instanceof BSONObject) {</span>
+<span class="nc" id="L196">            return JsonToken.START_OBJECT;</span>
+<span class="nc bnc" id="L197" title="All 2 branches missed.">        } else if (o instanceof Number) {</span>
+<span class="nc bnc" id="L198" title="All 6 branches missed.">            if (o instanceof Double || o instanceof Float</span>
+                    || o instanceof BigDecimal) {
+<span class="nc" id="L200">                return JsonToken.VALUE_NUMBER_FLOAT;</span>
+            } else {
+<span class="nc" id="L202">                return JsonToken.VALUE_NUMBER_INT;</span>
+            }
+<span class="nc bnc" id="L204" title="All 2 branches missed.">        } else if (o instanceof Boolean) {</span>
+<span class="nc bnc" id="L205" title="All 2 branches missed.">            if ((Boolean) o) {</span>
+<span class="nc" id="L206">                return JsonToken.VALUE_TRUE;</span>
+            } else {
+<span class="nc" id="L208">                return JsonToken.VALUE_FALSE;</span>
+            }
+<span class="nc bnc" id="L210" title="All 2 branches missed.">        } else if (o instanceof CharSequence) {</span>
+<span class="nc" id="L211">            return JsonToken.VALUE_STRING;</span>
+<span class="nc bnc" id="L212" title="All 2 branches missed.">        } else if (o instanceof ObjectId) {</span>
+<span class="nc" id="L213">            return JsonToken.VALUE_EMBEDDED_OBJECT;</span>
+<span class="nc bnc" id="L214" title="All 2 branches missed.">        } else if (o instanceof DBRef) {</span>
+<span class="nc" id="L215">            return JsonToken.VALUE_EMBEDDED_OBJECT;</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">        } else if (o instanceof Date) {</span>
+<span class="nc" id="L217">            return JsonToken.VALUE_EMBEDDED_OBJECT;</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">        } else if (o instanceof UUID) {</span>
+<span class="nc" id="L219">            return JsonToken.VALUE_EMBEDDED_OBJECT;</span>
+<span class="nc bnc" id="L220" title="All 2 branches missed.">        } else if (o instanceof byte[]) {</span>
+<span class="nc" id="L221">            return JsonToken.VALUE_EMBEDDED_OBJECT;</span>
+        } else {
+<span class="nc" id="L223">            throw new IllegalStateException(&quot;Don't know how to parse type: &quot;</span>
+<span class="nc" id="L224">                    + o.getClass());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

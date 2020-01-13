@@ -1,0 +1,859 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>Aggregation.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack</a> &gt; <span class="el_source">Aggregation.java</span></div><h1>Aggregation.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2014 Christopher Exell
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.mongojack;
+
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.bson.BsonDocument;
+import org.bson.codecs.configuration.CodecRegistry;
+import org.bson.conversions.Bson;
+import org.mongojack.DBProjection.ProjectionBuilder;
+import org.mongojack.DBQuery.Query;
+import org.mongojack.DBSort.SortBuilder;
+import org.mongojack.internal.util.DocumentSerializationUtils;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.function.UnaryOperator;
+
+/**
+ * A Generic Aggregation object that allows the aggregation operations,
+ * and the return type of the AggregationResult to be specified.
+ * &lt;p&gt;
+ * The Pipeline is a List&amp;lt;Stage&amp;gt;, and Stage is a Bson which makes it compatible with the methods in the JacksonMongoCollection that accept
+ * Bson-list aggregate pipeline objects, and makes those methods interoperable with Mongo's internal Aggregates class.  But be warned
+ * that Pipeline.initialize has to be called before Stage.toBsonDocument, or exceptions will result; similarly the list operations shouldn't be called
+ * before initialize is called.  JacksonMongoCollection takes care of calling initialize for you.
+ * &lt;/p&gt;
+ *
+ * @param &lt;T&gt; The type of results to be produced by the aggregation results.
+ * @author Christopher Exell
+ * @since 2.1.0
+ *
+ * @deprecated Use com.mongodb.client.model.Aggregates
+ */
+@SuppressWarnings(&quot;unused&quot;)
+@Deprecated
+<span class="nc" id="L58">public class Aggregation&lt;T&gt; {</span>
+
+    public static Pipeline&lt;Group.Accumulator&gt; group(Expression&lt;?&gt; key, Map&lt;String, Group.Accumulator&gt; calculatedFields) {
+<span class="nc" id="L61">        return new Pipeline&lt;&gt;(Group.by(key).set(calculatedFields));</span>
+    }
+
+    public static Pipeline&lt;Group.Accumulator&gt; group(Expression&lt;?&gt; key) {
+<span class="nc" id="L65">        return new Pipeline&lt;&gt;(Group.by(key));</span>
+    }
+
+    public static Pipeline&lt;Group.Accumulator&gt; group(String key) {
+<span class="fc" id="L69">        return new Pipeline&lt;&gt;(Group.by(Expression.path(key)));</span>
+    }
+
+    public static Pipeline&lt;Void&gt; limit(int n) {
+<span class="nc" id="L73">        return new Pipeline&lt;&gt;(new Limit(n));</span>
+    }
+
+    public static Pipeline&lt;Void&gt; match(Query query) {
+<span class="fc" id="L77">        return new Pipeline&lt;&gt;(new Match(query));</span>
+    }
+
+    public static Pipeline&lt;Expression&lt;?&gt;&gt; project(ProjectionBuilder projection) {
+<span class="nc" id="L81">        return new Pipeline&lt;&gt;(new Project(projection));</span>
+    }
+
+    public static Pipeline&lt;Expression&lt;?&gt;&gt; project(String field) {
+<span class="nc" id="L85">        return new Pipeline&lt;&gt;(Project.fields(field));</span>
+    }
+
+    public static Pipeline&lt;Expression&lt;?&gt;&gt; project(String field, Expression&lt;?&gt; value) {
+<span class="fc" id="L89">        return new Pipeline&lt;&gt;(Project.field(field, value));</span>
+    }
+
+    public static Pipeline&lt;Void&gt; skip(int n) {
+<span class="nc" id="L93">        return new Pipeline&lt;&gt;(new Skip(n));</span>
+    }
+
+    public static Pipeline&lt;Void&gt; sort(SortBuilder builder) {
+<span class="nc" id="L97">        return new Pipeline&lt;&gt;(new Sort(builder));</span>
+    }
+
+    public static Pipeline&lt;Void&gt; unwind(String path) {
+<span class="fc" id="L101">        return new Pipeline&lt;&gt;(new Unwind(path));</span>
+    }
+
+    public interface Stage&lt;S&gt; extends Bson, InitializationRequiredForTransformation {
+
+        Stage&lt;S&gt; set(String field, S value);
+
+        Stage&lt;S&gt; set(Map&lt;String, S&gt; fields);
+
+    }
+
+    private static abstract class AbstractStage&lt;S&gt; implements Stage&lt;S&gt; {
+
+        private ObjectMapper objectMapper;
+        private JavaType type;
+
+        @Override
+        public &lt;TDocument&gt; BsonDocument toBsonDocument(final Class&lt;TDocument&gt; tDocumentClass, final CodecRegistry codecRegistry) {
+<span class="fc" id="L119">            return DocumentSerializationUtils.serializePipelineStage(objectMapper, type, this).toBsonDocument(tDocumentClass, codecRegistry);</span>
+        }
+
+        @Override
+        public void initialize(final ObjectMapper objectMapper, final JavaType type, final JacksonCodecRegistry codecRegistry) {
+<span class="fc" id="L124">            this.objectMapper = objectMapper;</span>
+<span class="fc" id="L125">            this.type = type;</span>
+<span class="fc" id="L126">        }</span>
+    }
+
+<span class="fc" id="L129">    private static abstract class SimpleStage extends AbstractStage&lt;Void&gt; implements Stage&lt;Void&gt; {</span>
+
+        @Override
+        public Stage&lt;Void&gt; set(String field, Void value) {
+<span class="nc" id="L133">            throw new UnsupportedOperationException();</span>
+        }
+
+        @Override
+        public Stage&lt;Void&gt; set(Map&lt;String, Void&gt; fields) {
+<span class="nc" id="L138">            throw new UnsupportedOperationException();</span>
+        }
+    }
+
+    public static class Group extends AbstractStage&lt;Group.Accumulator&gt; implements Stage&lt;Group.Accumulator&gt; {
+<span class="fc" id="L143">        public enum Op {$addToSet, $avg, $first, $last, $max, $min, $push, $sum}</span>
+
+        ;
+
+<span class="fc" id="L147">        private static final Accumulator COUNT = sum(Expression.literal(1));</span>
+
+        private final Expression&lt;?&gt; key;
+<span class="fc" id="L150">        private final Map&lt;String, Accumulator&gt; calculatedFields = new LinkedHashMap&lt;&gt;();</span>
+
+<span class="fc" id="L152">        private Group(Expression&lt;?&gt; key) {</span>
+<span class="fc" id="L153">            this.key = key;</span>
+<span class="fc" id="L154">        }</span>
+
+        public static Group by(Expression&lt;?&gt; key) {
+<span class="fc" id="L157">            return new Group(key);</span>
+        }
+
+        public static Group by(String key) {
+<span class="nc" id="L161">            return new Group(Expression.path(key));</span>
+        }
+
+        public static Accumulator distinct(Expression&lt;?&gt; expression) {
+<span class="nc" id="L165">            return new Accumulator(Op.$addToSet, expression);</span>
+        }
+
+        public static Accumulator distinct(String... path) {
+<span class="nc" id="L169">            return new Accumulator(Op.$addToSet, Expression.path(path));</span>
+        }
+
+        public static Accumulator average(Expression&lt;?&gt; expression) {
+<span class="nc" id="L173">            return new Accumulator(Op.$avg, expression);</span>
+        }
+
+        public static Accumulator average(String... path) {
+<span class="nc" id="L177">            return new Accumulator(Op.$avg, Expression.path(path));</span>
+        }
+
+        public static Accumulator first(Expression&lt;?&gt; expression) {
+<span class="nc" id="L181">            return new Accumulator(Op.$first, expression);</span>
+        }
+
+        public static Accumulator first(String... path) {
+<span class="nc" id="L185">            return new Accumulator(Op.$first, Expression.path(path));</span>
+        }
+
+        public static Accumulator last(Expression&lt;?&gt; expression) {
+<span class="nc" id="L189">            return new Accumulator(Op.$last, expression);</span>
+        }
+
+        public static Accumulator last(String... path) {
+<span class="nc" id="L193">            return new Accumulator(Op.$last, Expression.path(path));</span>
+        }
+
+        public static Accumulator max(Expression&lt;?&gt; expression) {
+<span class="nc" id="L197">            return new Accumulator(Op.$max, expression);</span>
+        }
+
+        public static Accumulator max(String... path) {
+<span class="nc" id="L201">            return new Accumulator(Op.$max, Expression.path(path));</span>
+        }
+
+        public static Accumulator min(Expression&lt;?&gt; expression) {
+<span class="nc" id="L205">            return new Accumulator(Op.$min, expression);</span>
+        }
+
+        public static Accumulator min(String... path) {
+<span class="fc" id="L209">            return new Accumulator(Op.$min, Expression.path(path));</span>
+        }
+
+        public static Accumulator list(Expression&lt;?&gt; expression) {
+<span class="nc" id="L213">            return new Accumulator(Op.$push, expression);</span>
+        }
+
+        public static Accumulator list(String... path) {
+<span class="nc" id="L217">            return new Accumulator(Op.$push, Expression.path(path));</span>
+        }
+
+        public static Accumulator sum(Expression&lt;?&gt; expression) {
+<span class="fc" id="L221">            return new Accumulator(Op.$sum, expression);</span>
+        }
+
+        public static Accumulator sum(String... path) {
+<span class="fc" id="L225">            return new Accumulator(Op.$sum, Expression.path(path));</span>
+        }
+
+        public static Accumulator count() {
+<span class="nc" id="L229">            return COUNT;</span>
+        }
+
+        /**
+         * Immutable pair of accumulator operation and expression.
+         */
+        public static class Accumulator {
+            public final Op operator;
+            public final Expression&lt;?&gt; expression;
+
+<span class="fc" id="L239">            private Accumulator(Op operator, Expression&lt;?&gt; expression) {</span>
+<span class="fc" id="L240">                this.operator = operator;</span>
+<span class="fc" id="L241">                this.expression = expression;</span>
+<span class="fc" id="L242">            }</span>
+        }
+
+        @Override
+        public Group set(String field, Accumulator value) {
+<span class="fc" id="L247">            calculatedFields.put(field, value);</span>
+<span class="fc" id="L248">            return this;</span>
+        }
+
+        @Override
+        public Group set(Map&lt;String, Accumulator&gt; calculatedFields) {
+<span class="nc" id="L253">            this.calculatedFields.putAll(calculatedFields);</span>
+<span class="nc" id="L254">            return this;</span>
+        }
+
+        public Expression&lt;?&gt; key() {
+<span class="fc" id="L258">            return key;</span>
+        }
+
+        public Set&lt;Entry&lt;String, Accumulator&gt;&gt; calculatedFields() {
+<span class="fc" id="L262">            return calculatedFields.entrySet();</span>
+        }
+    }
+
+    public static class Limit extends SimpleStage implements Stage&lt;Void&gt; {
+        private final int n;
+
+<span class="fc" id="L269">        private Limit(int n) {</span>
+<span class="fc" id="L270">            this.n = n;</span>
+<span class="fc" id="L271">        }</span>
+
+        public int limit() {
+<span class="fc" id="L274">            return n;</span>
+        }
+    }
+
+    public static class Match extends DBQuery.AbstractBuilder&lt;Match&gt; implements Stage&lt;Void&gt; {
+        private final Query query;
+        private ObjectMapper objectMapper;
+        private JavaType type;
+
+        private Match() {
+<span class="nc" id="L284">            this(DBQuery.empty());</span>
+<span class="nc" id="L285">        }</span>
+
+<span class="fc" id="L287">        private Match(Query query) {</span>
+<span class="fc" id="L288">            this.query = query;</span>
+<span class="fc" id="L289">        }</span>
+
+        @Override
+        protected Match put(String op, QueryCondition value) {
+<span class="nc" id="L293">            query.put(op, value);</span>
+<span class="nc" id="L294">            return this;</span>
+        }
+
+        @Override
+        protected Match put(String field, String op, QueryCondition value) {
+<span class="nc" id="L299">            query.put(field, op, value);</span>
+<span class="nc" id="L300">            return this;</span>
+        }
+
+        @Override
+        protected Match putGroup(String op, Query... expressions) {
+<span class="nc" id="L305">            query.putGroup(op, expressions);</span>
+<span class="nc" id="L306">            return this;</span>
+        }
+
+        @Override
+        public Stage&lt;Void&gt; set(String field, Void value) {
+<span class="nc" id="L311">            throw new UnsupportedOperationException();</span>
+        }
+
+        @Override
+        public Stage&lt;Void&gt; set(Map&lt;String, Void&gt; fields) {
+<span class="nc" id="L316">            throw new UnsupportedOperationException();</span>
+        }
+
+        public Query query() {
+<span class="fc" id="L320">            return query;</span>
+        }
+
+        @Override
+        public &lt;TDocument&gt; BsonDocument toBsonDocument(final Class&lt;TDocument&gt; tDocumentClass, final CodecRegistry codecRegistry) {
+<span class="fc" id="L325">            return DocumentSerializationUtils.serializePipelineStage(objectMapper, type, this).toBsonDocument(tDocumentClass, codecRegistry);</span>
+        }
+
+        @Override
+        public void initialize(final ObjectMapper objectMapper, final JavaType type, final JacksonCodecRegistry codecRegistry) {
+<span class="fc" id="L330">            this.objectMapper = objectMapper;</span>
+<span class="fc" id="L331">            this.type = type;</span>
+<span class="fc" id="L332">        }</span>
+    }
+
+    public static class Project extends AbstractStage&lt;Expression&lt;?&gt;&gt; implements Stage&lt;Expression&lt;?&gt;&gt; {
+        private final ProjectionBuilder builder;
+
+<span class="nc" id="L338">        private Project(ProjectionBuilder builder) {</span>
+<span class="nc" id="L339">            this.builder = builder;</span>
+<span class="nc" id="L340">        }</span>
+
+<span class="fc" id="L342">        private Project(String field, Expression&lt;?&gt; value) {</span>
+<span class="fc" id="L343">            this.builder = DBProjection.include();</span>
+<span class="fc" id="L344">            set(field, value);</span>
+<span class="fc" id="L345">        }</span>
+
+        public static Project fields(String... fields) {
+<span class="nc" id="L348">            return new Project(DBProjection.include(fields));</span>
+        }
+
+        public static Project fields(Collection&lt;String&gt; fields) {
+<span class="nc" id="L352">            return new Project(DBProjection.include(fields.toArray(new String[fields.size()])));</span>
+        }
+
+        public static Project field(String field, Expression&lt;?&gt; value) {
+<span class="fc" id="L356">            return new Project(field, value);</span>
+        }
+
+        public static Project field(String field, String... path) {
+<span class="nc" id="L360">            return new Project(field, Expression.path(path));</span>
+        }
+
+        public Project excludeId() {
+<span class="fc" id="L364">            builder.exclude(&quot;_id&quot;);</span>
+<span class="fc" id="L365">            return this;</span>
+        }
+
+        @Override
+        public Project set(String field, Expression&lt;?&gt; value) {
+<span class="fc" id="L370">            builder.append(field, value);</span>
+<span class="fc" id="L371">            return this;</span>
+        }
+
+        @Override
+        public Project set(Map&lt;String, Expression&lt;?&gt;&gt; fields) {
+<span class="nc" id="L376">            builder.putAll(fields);</span>
+<span class="nc" id="L377">            return this;</span>
+        }
+
+        public ProjectionBuilder builder() {
+<span class="fc" id="L381">            return builder;</span>
+        }
+    }
+
+    public static class Skip extends SimpleStage implements Stage&lt;Void&gt; {
+        private final int n;
+
+<span class="nc" id="L388">        private Skip(int n) {</span>
+<span class="nc" id="L389">            this.n = n;</span>
+<span class="nc" id="L390">        }</span>
+
+        public int skip() {
+<span class="nc" id="L393">            return n;</span>
+        }
+    }
+
+    public static class Sort extends SimpleStage implements Stage&lt;Void&gt; {
+        private final SortBuilder builder;
+
+<span class="fc" id="L400">        private Sort(SortBuilder builder) {</span>
+<span class="fc" id="L401">            this.builder = builder;</span>
+<span class="fc" id="L402">        }</span>
+
+        public Sort asc(String field) {
+<span class="nc" id="L405">            builder.asc(field);</span>
+<span class="nc" id="L406">            return this;</span>
+        }
+
+        public Sort desc(String field) {
+<span class="nc" id="L410">            builder.desc(field);</span>
+<span class="nc" id="L411">            return this;</span>
+        }
+
+        public SortBuilder builder() {
+<span class="fc" id="L415">            return builder;</span>
+        }
+    }
+
+    public static class Unwind extends SimpleStage implements Stage&lt;Void&gt; {
+        private final String[] path;
+
+<span class="fc" id="L422">        private Unwind(String... path) {</span>
+<span class="fc" id="L423">            this.path = path;</span>
+<span class="fc" id="L424">        }</span>
+
+        public FieldPath&lt;Object&gt; path() {
+<span class="fc" id="L427">            return new FieldPath&lt;&gt;(path);</span>
+        }
+    }
+
+    public static class Out extends SimpleStage implements Stage&lt;Void&gt; {
+        private final String collectionName;
+
+<span class="fc" id="L434">        public Out(String collectionName) {</span>
+<span class="fc" id="L435">            this.collectionName = collectionName;</span>
+<span class="fc" id="L436">        }</span>
+
+        public String collectionName() {
+<span class="fc" id="L439">            return collectionName;</span>
+        }
+    }
+
+    /**
+     * A fluent Aggregation builder.
+     * &lt;p&gt;
+     * Type parameter S is the type of value that can be passed to set(String, S), given current latest stage.
+     */
+    public static class Pipeline&lt;S&gt; extends AbstractListDecorator&lt;Stage&lt;Object&gt;&gt; implements List&lt;Stage&lt;Object&gt;&gt;, InitializationRequiredForTransformation {
+
+        private final List&lt;Stage&lt;Object&gt;&gt; allStages;
+
+        private ObjectMapper objectMapper;
+        private JavaType type;
+        private JacksonCodecRegistry codecRegistry;
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+<span class="fc" id="L457">        public Pipeline(Stage&lt;S&gt; stage) {</span>
+<span class="fc" id="L458">            allStages = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L459">            allStages.add((Stage&lt;Object&gt;) stage);</span>
+<span class="fc" id="L460">        }</span>
+
+        @SuppressWarnings(&quot;unchecked&quot;)
+        public &lt;X&gt; Pipeline&lt;X&gt; then(Stage&lt;X&gt; stage) {
+<span class="fc" id="L464">            Pipeline&lt;X&gt; result = (Pipeline&lt;X&gt;) this;</span>
+<span class="fc" id="L465">            result.allStages.add((Stage&lt;Object&gt;) stage);</span>
+<span class="fc" id="L466">            return result;</span>
+        }
+
+        public Pipeline&lt;Group.Accumulator&gt; group(Expression&lt;?&gt; key, Map&lt;String, Group.Accumulator&gt; calculatedFields) {
+<span class="nc" id="L470">            return then(Group.by(key).set(calculatedFields));</span>
+        }
+
+        public Pipeline&lt;Group.Accumulator&gt; group(Expression&lt;?&gt; key) {
+<span class="nc" id="L474">            return then(Group.by(key));</span>
+        }
+
+        public Pipeline&lt;Group.Accumulator&gt; group(String... key) {
+<span class="fc" id="L478">            return then(Group.by(Expression.path(key)));</span>
+        }
+
+        public Pipeline&lt;S&gt; set(String field, S value) {
+<span class="fc" id="L482">            allStages.get(allStages.size() - 1).set(field, value);</span>
+<span class="fc" id="L483">            return this;</span>
+        }
+
+        public Pipeline&lt;Void&gt; limit(int n) {
+<span class="fc" id="L487">            return then(new Limit(n));</span>
+        }
+
+        public Pipeline&lt;Void&gt; match(Query query) {
+<span class="nc" id="L491">            return then(new Match(query));</span>
+        }
+
+        public Pipeline&lt;Expression&lt;?&gt;&gt; project(ProjectionBuilder projection) {
+<span class="nc" id="L495">            return then(new Project(projection));</span>
+        }
+
+        public Pipeline&lt;Expression&lt;?&gt;&gt; project(String field) {
+<span class="nc" id="L499">            return then(Project.field(field));</span>
+        }
+
+        public Pipeline&lt;Expression&lt;?&gt;&gt; project(String field, Expression&lt;?&gt; value) {
+<span class="fc" id="L503">            return then(new Project(field, value));</span>
+        }
+
+        public Pipeline&lt;Expression&lt;?&gt;&gt; project(Collection&lt;String&gt; fields) {
+<span class="nc" id="L507">            return then(Project.fields(fields));</span>
+        }
+
+        public Pipeline&lt;Expression&lt;?&gt;&gt; projectFields(String... fields) {
+<span class="nc" id="L511">            return then(Project.fields(fields));</span>
+        }
+
+        public Pipeline&lt;Expression&lt;?&gt;&gt; projectField(String field, String... value) {
+<span class="nc" id="L515">            return then(Project.field(field, value));</span>
+        }
+
+        public Pipeline&lt;Void&gt; skip(int n) {
+<span class="nc" id="L519">            return then(new Skip(n));</span>
+        }
+
+        public Pipeline&lt;Void&gt; sort(SortBuilder builder) {
+<span class="fc" id="L523">            return then(new Sort(builder));</span>
+        }
+
+        public Pipeline&lt;Void&gt; unwind(String... path) {
+<span class="nc" id="L527">            return then(new Unwind(path));</span>
+        }
+
+        public Pipeline&lt;Void&gt; out(String collectionName) {
+<span class="fc" id="L531">            return then(new Out(collectionName));</span>
+        }
+
+        public List&lt;Stage&lt;Object&gt;&gt; stages() {
+<span class="fc" id="L535">            ArrayList&lt;Stage&lt;Object&gt;&gt; stages = new ArrayList&lt;&gt;(allStages.size() + 1);</span>
+<span class="fc" id="L536">            stages.addAll(allStages);</span>
+<span class="fc" id="L537">            stages.forEach((stage) -&gt; stage.initialize(objectMapper, type, codecRegistry));</span>
+<span class="fc" id="L538">            return stages;</span>
+        }
+
+        @Override
+        public void initialize(final ObjectMapper objectMapper, final JavaType type, final JacksonCodecRegistry codecRegistry) {
+<span class="fc" id="L543">            this.objectMapper = objectMapper;</span>
+<span class="fc" id="L544">            this.type = type;</span>
+<span class="fc" id="L545">            this.codecRegistry = codecRegistry;</span>
+<span class="fc" id="L546">        }</span>
+
+        @Override
+        protected List&lt;Stage&lt;Object&gt;&gt; delegate() {
+<span class="fc" id="L550">            return stages();</span>
+        }
+
+        @Override
+        public Stage&lt;Object&gt; set(int index, Stage&lt;Object&gt; element) {
+<span class="nc" id="L555">            throw new UnsupportedOperationException();</span>
+        }
+        @Override
+        public void add(int index, Stage&lt;Object&gt; element) {
+<span class="nc" id="L559">            throw new UnsupportedOperationException();</span>
+        }
+        @Override
+        public Stage&lt;Object&gt; remove(int index) {
+<span class="nc" id="L563">            throw new UnsupportedOperationException();</span>
+        }
+        @Override
+        public boolean addAll(int index, Collection&lt;? extends Stage&lt;Object&gt;&gt; c) {
+<span class="nc" id="L567">            throw new UnsupportedOperationException();</span>
+        }
+        @Override
+        public void replaceAll(UnaryOperator&lt;Stage&lt;Object&gt;&gt; operator) {
+<span class="nc" id="L571">            throw new UnsupportedOperationException();</span>
+        }
+        @Override
+        public void sort(Comparator&lt;? super Stage&lt;Object&gt;&gt; c) {
+<span class="nc" id="L575">            throw new UnsupportedOperationException();</span>
+        }
+    }
+
+    /**
+     * Expression builder class.
+     */
+<span class="fc" id="L582">    public static abstract class Expression&lt;T&gt; {</span>
+
+        public static Expression&lt;Object&gt; path(String... path) {
+<span class="fc" id="L585">            return new FieldPath&lt;&gt;(path);</span>
+        }
+
+        public static Expression&lt;Boolean&gt; bool(String... path) {
+<span class="nc" id="L589">            return new FieldPath&lt;&gt;(path);</span>
+        }
+
+        public static Expression&lt;Date&gt; date(String... path) {
+<span class="fc" id="L593">            return new FieldPath&lt;&gt;(path);</span>
+        }
+
+        public static Expression&lt;Integer&gt; integer(String... path) {
+<span class="nc" id="L597">            return new FieldPath&lt;&gt;(path);</span>
+        }
+
+        public static Expression&lt;List&lt;?&gt;&gt; list(String... path) {
+<span class="fc" id="L601">            return new FieldPath&lt;&gt;(path);</span>
+        }
+
+        public static Expression&lt;Number&gt; number(String... path) {
+<span class="nc" id="L605">            return new FieldPath&lt;&gt;(path);</span>
+        }
+
+        public static Expression&lt;String&gt; string(String... path) {
+<span class="nc" id="L609">            return new FieldPath&lt;&gt;(path);</span>
+        }
+
+        public static &lt;T&gt; Expression&lt;T&gt; literal(T value) {
+<span class="fc" id="L613">            return new Literal&lt;&gt;(value);</span>
+        }
+
+        public static Expression&lt;Object&gt; object(Map&lt;String, Expression&lt;?&gt;&gt; properties) {
+<span class="nc" id="L617">            return new ExpressionObject(properties);</span>
+        }
+
+        // Boolean Operator Expressions
+
+        public static Expression&lt;Boolean&gt; and(Expression&lt;?&gt;... operands) {
+<span class="nc" id="L623">            return new OperatorExpression&lt;&gt;(&quot;$and&quot;, operands);</span>
+        }
+
+        public static Expression&lt;Boolean&gt; not(Expression&lt;?&gt; operand) {
+<span class="nc" id="L627">            return new OperatorExpression&lt;&gt;(&quot;$not&quot;, operand);</span>
+        }
+
+        public static Expression&lt;Boolean&gt; or(Expression&lt;?&gt;... operands) {
+<span class="nc" id="L631">            return new OperatorExpression&lt;&gt;(&quot;$or&quot;, operands);</span>
+        }
+
+        // Set Operator Expressions
+
+        public static Expression&lt;Boolean&gt; allElementsTrue(Expression&lt;List&lt;?&gt;&gt; set) {
+<span class="nc" id="L637">            return new OperatorExpression&lt;&gt;(&quot;$allElementsTrue&quot;, set);</span>
+        }
+
+        public static Expression&lt;Boolean&gt; anyElementTrue(Expression&lt;List&lt;?&gt;&gt; set) {
+<span class="nc" id="L641">            return new OperatorExpression&lt;&gt;(&quot;$anyElementTrue&quot;, set);</span>
+        }
+
+        public static Expression&lt;List&lt;?&gt;&gt; setDifference(Expression&lt;List&lt;?&gt;&gt; set1, Expression&lt;List&lt;?&gt;&gt; set2) {
+<span class="nc" id="L645">            return new OperatorExpression&lt;&gt;(&quot;$setDifference&quot;, set1, set2);</span>
+        }
+
+        public static Expression&lt;Boolean&gt; setEquals(Expression&lt;List&lt;?&gt;&gt;... sets) {
+<span class="nc" id="L649">            return new OperatorExpression&lt;&gt;(&quot;$setEquals&quot;, sets);</span>
+        }
+
+        public static Expression&lt;List&lt;?&gt;&gt; setIntersection(Expression&lt;List&lt;?&gt;&gt;... sets) {
+<span class="nc" id="L653">            return new OperatorExpression&lt;&gt;(&quot;$setIntersection&quot;, sets);</span>
+        }
+
+        public static Expression&lt;Boolean&gt; setIsSubset(Expression&lt;List&lt;?&gt;&gt; set1, Expression&lt;List&lt;?&gt;&gt; set2) {
+<span class="nc" id="L657">            return new OperatorExpression&lt;&gt;(&quot;$setIsSubset&quot;, set1, set2);</span>
+        }
+
+        public static Expression&lt;List&lt;?&gt;&gt; setUnion(Expression&lt;List&lt;?&gt;&gt;... sets) {
+<span class="nc" id="L661">            return new OperatorExpression&lt;&gt;(&quot;$setUnion&quot;, sets);</span>
+        }
+
+        // Comparison Operator Expressions
+
+        public static Expression&lt;Integer&gt; compareTo(Expression&lt;?&gt; value1, Expression&lt;?&gt; value2) {
+<span class="nc" id="L667">            return new OperatorExpression&lt;&gt;(&quot;$cmp&quot;, value1, value2);</span>
+        }
+
+        public static Expression&lt;Boolean&gt; equals(Expression&lt;?&gt; value1, Expression&lt;?&gt; value2) {
+<span class="nc" id="L671">            return new OperatorExpression&lt;&gt;(&quot;$eq&quot;, value1, value2);</span>
+        }
+
+        public static Expression&lt;Boolean&gt; greaterThan(Expression&lt;?&gt; value1, Expression&lt;?&gt; value2) {
+<span class="nc" id="L675">            return new OperatorExpression&lt;&gt;(&quot;$gt&quot;, value1, value2);</span>
+        }
+
+        public static Expression&lt;Boolean&gt; greaterThanOrEquals(Expression&lt;?&gt; value1, Expression&lt;?&gt; value2) {
+<span class="nc" id="L679">            return new OperatorExpression&lt;&gt;(&quot;$gte&quot;, value1, value2);</span>
+        }
+
+        public static Expression&lt;Boolean&gt; lessThan(Expression&lt;?&gt; value1, Expression&lt;?&gt; value2) {
+<span class="nc" id="L683">            return new OperatorExpression&lt;&gt;(&quot;$lt&quot;, value1, value2);</span>
+        }
+
+        public static Expression&lt;Boolean&gt; lessThanOrEquals(Expression&lt;?&gt; value1, Expression&lt;?&gt; value2) {
+<span class="nc" id="L687">            return new OperatorExpression&lt;&gt;(&quot;$lte&quot;, value1, value2);</span>
+        }
+
+        public static Expression&lt;Boolean&gt; notEquals(Expression&lt;?&gt; value1, Expression&lt;?&gt; value2) {
+<span class="nc" id="L691">            return new OperatorExpression&lt;&gt;(&quot;$ne&quot;, value1, value2);</span>
+        }
+
+        // Arithmetic Operator Expressions
+
+        public static Expression&lt;Number&gt; add(Expression&lt;Number&gt;... numbers) {
+<span class="nc" id="L697">            return new OperatorExpression&lt;&gt;(&quot;$add&quot;, numbers);</span>
+        }
+
+        public static Expression&lt;Number&gt; divide(Expression&lt;Number&gt; number1, Expression&lt;Number&gt; number2) {
+<span class="nc" id="L701">            return new OperatorExpression&lt;&gt;(&quot;$divide&quot;, number1, number2);</span>
+        }
+
+        public static Expression&lt;Number&gt; mod(Expression&lt;Number&gt; number1, Expression&lt;Number&gt; number2) {
+<span class="nc" id="L705">            return new OperatorExpression&lt;&gt;(&quot;$mod&quot;, number1, number2);</span>
+        }
+
+        public static Expression&lt;Number&gt; multiply(Expression&lt;Number&gt;... numbers) {
+<span class="nc" id="L709">            return new OperatorExpression&lt;&gt;(&quot;$multiply&quot;, numbers);</span>
+        }
+
+        public static Expression&lt;Number&gt; subtract(Expression&lt;Number&gt; number1, Expression&lt;Number&gt; number2) {
+<span class="nc" id="L713">            return new OperatorExpression&lt;&gt;(&quot;$subtract&quot;, number1, number2);</span>
+        }
+
+        // String Operator Expressions
+
+        public static Expression&lt;String&gt; concat(Expression&lt;String&gt;... strings) {
+<span class="nc" id="L719">            return new OperatorExpression&lt;&gt;(&quot;$concat&quot;, strings);</span>
+        }
+
+        public static Expression&lt;Integer&gt; compareToIgnoreCase(Expression&lt;String&gt; string1, Expression&lt;String&gt; string2) {
+<span class="nc" id="L723">            return new OperatorExpression&lt;&gt;(&quot;$strcasecmp&quot;, string1, string2);</span>
+        }
+
+        public static Expression&lt;String&gt; substring(Expression&lt;String&gt; string, Expression&lt;Integer&gt; start, Expression&lt;Integer&gt; length) {
+<span class="nc" id="L727">            return new OperatorExpression&lt;&gt;(&quot;$substr&quot;, string, start, length);</span>
+        }
+
+        public static Expression&lt;String&gt; toLowerCase(Expression&lt;String&gt; string) {
+<span class="nc" id="L731">            return new OperatorExpression&lt;&gt;(&quot;$toLower&quot;, string);</span>
+        }
+
+        public static Expression&lt;String&gt; toUpperCase(Expression&lt;String&gt; string) {
+<span class="nc" id="L735">            return new OperatorExpression&lt;&gt;(&quot;$toUpper&quot;, string);</span>
+        }
+
+        // Array Operator Expressions
+
+        public static Expression&lt;Integer&gt; size(Expression&lt;List&lt;?&gt;&gt; array) {
+<span class="fc" id="L741">            return new OperatorExpression&lt;&gt;(&quot;$size&quot;, array);</span>
+        }
+
+        public static &lt;T&gt; Expression&lt;T&gt; arrayElemAt(Expression&lt;List&lt;?&gt;&gt; expression, Expression&lt;Integer&gt; index) {
+<span class="fc" id="L745">            return new OperatorExpression&lt;&gt;(&quot;$arrayElemAt&quot;, expression, index);</span>
+        }
+
+        // Date Operator Expressions
+
+        public static Expression&lt;Integer&gt; dayOfMonth(Expression&lt;Date&gt; date) {
+<span class="nc" id="L751">            return new OperatorExpression&lt;&gt;(&quot;$dayOfMonth&quot;, date);</span>
+        }
+
+        public static Expression&lt;Integer&gt; dayOfWeek(Expression&lt;Date&gt; date) {
+<span class="nc" id="L755">            return new OperatorExpression&lt;&gt;(&quot;$dayOfWeek&quot;, date);</span>
+        }
+
+        public static Expression&lt;Integer&gt; hour(Expression&lt;Date&gt; date) {
+<span class="nc" id="L759">            return new OperatorExpression&lt;&gt;(&quot;$hour&quot;, date);</span>
+        }
+
+        public static Expression&lt;Integer&gt; millisecond(Expression&lt;Date&gt; date) {
+<span class="nc" id="L763">            return new OperatorExpression&lt;&gt;(&quot;$millisecond&quot;, date);</span>
+        }
+
+        public static Expression&lt;Integer&gt; minute(Expression&lt;Date&gt; date) {
+<span class="nc" id="L767">            return new OperatorExpression&lt;&gt;(&quot;$minute&quot;, date);</span>
+        }
+
+        public static Expression&lt;Integer&gt; month(Expression&lt;Date&gt; date) {
+<span class="fc" id="L771">            return new OperatorExpression&lt;&gt;(&quot;$month&quot;, date);</span>
+        }
+
+        public static Expression&lt;Integer&gt; second(Expression&lt;Date&gt; date) {
+<span class="nc" id="L775">            return new OperatorExpression&lt;&gt;(&quot;$second&quot;, date);</span>
+        }
+
+        public static Expression&lt;Integer&gt; week(Expression&lt;Date&gt; date) {
+<span class="nc" id="L779">            return new OperatorExpression&lt;&gt;(&quot;$week&quot;, date);</span>
+        }
+
+        public static Expression&lt;Integer&gt; year(Expression&lt;Date&gt; date) {
+<span class="nc" id="L783">            return new OperatorExpression&lt;&gt;(&quot;$year&quot;, date);</span>
+        }
+
+        // Conditional Operator Expressions
+
+        public static &lt;T&gt; Expression&lt;T&gt; cond(
+            Expression&lt;Boolean&gt; condition,
+            Expression&lt;? extends T&gt; consequent, Expression&lt;? extends T&gt; alternative
+        ) {
+<span class="nc" id="L792">            return new OperatorExpression&lt;&gt;(&quot;$cond&quot;, condition, consequent, alternative);</span>
+        }
+
+        public static &lt;T&gt; Expression&lt;T&gt; ifNull(Expression&lt;? extends T&gt; expression, Expression&lt;? extends T&gt; replacement) {
+<span class="fc" id="L796">            return new OperatorExpression&lt;&gt;(&quot;$ifNull&quot;, expression, replacement);</span>
+        }
+    }
+
+    public static final class FieldPath&lt;T&gt; extends Expression&lt;T&gt; {
+        private final String[] path;
+
+<span class="fc" id="L803">        private FieldPath(String... path) {</span>
+<span class="fc" id="L804">            this.path = path;</span>
+<span class="fc" id="L805">        }</span>
+
+        @Override
+        public String toString() {
+<span class="fc" id="L809">            StringBuilder sb = new StringBuilder(&quot;$&quot;).append(path[0]);</span>
+<span class="pc bpc" id="L810" title="1 of 2 branches missed.">            for (int i = 1; i &lt; path.length; ++i) {</span>
+<span class="nc" id="L811">                sb.append('.').append(path[i]);</span>
+            }
+<span class="fc" id="L813">            return sb.toString();</span>
+        }
+    }
+
+    public static class ExpressionObject extends Expression&lt;Object&gt; {
+        private final Map&lt;String, Expression&lt;?&gt;&gt; properties;
+
+<span class="nc" id="L820">        private ExpressionObject(Map&lt;String, Expression&lt;?&gt;&gt; properties) {</span>
+<span class="nc" id="L821">            this.properties = properties;</span>
+<span class="nc" id="L822">        }</span>
+
+        public Set&lt;Map.Entry&lt;String, Expression&lt;?&gt;&gt;&gt; properties() {
+<span class="nc" id="L825">            return properties.entrySet();</span>
+        }
+    }
+
+    public static class Literal&lt;T&gt; extends Expression&lt;T&gt; {
+        private final T value;
+
+<span class="fc" id="L832">        private Literal(T value) {</span>
+<span class="fc" id="L833">            this.value = value;</span>
+<span class="fc" id="L834">        }</span>
+
+        public T value() {
+<span class="fc" id="L837">            return value;</span>
+        }
+    }
+
+    public static class OperatorExpression&lt;T&gt; extends Expression&lt;T&gt; {
+        private final String operator;
+        private final Expression&lt;?&gt;[] operands;
+
+<span class="fc" id="L845">        private OperatorExpression(String operator, Expression&lt;?&gt;... operands) {</span>
+<span class="fc" id="L846">            this.operator = operator;</span>
+<span class="fc" id="L847">            this.operands = operands;</span>
+<span class="fc" id="L848">        }</span>
+
+        public String operator() {
+<span class="fc" id="L851">            return operator;</span>
+        }
+
+        public Iterable&lt;Expression&lt;?&gt;&gt; operands() {
+<span class="fc" id="L855">            return Arrays.asList(operands);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

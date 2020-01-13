@@ -1,0 +1,416 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BsonObjectTraversingParser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal.object</a> &gt; <span class="el_source">BsonObjectTraversingParser.java</span></div><h1>BsonObjectTraversingParser.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2011 VZ Netzwerke Ltd
+ * Copyright 2014 devbliss GmbH
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.mongojack.internal.object;
+
+import com.fasterxml.jackson.core.Base64Variant;
+import com.fasterxml.jackson.core.JsonLocation;
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonStreamContext;
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.core.ObjectCodec;
+import com.fasterxml.jackson.core.Version;
+import com.fasterxml.jackson.core.base.ParserMinimalBase;
+import com.mongodb.BasicDBObject;
+import org.bson.BSONObject;
+import org.mongojack.internal.util.VersionUtils;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+
+/**
+ * Parses a BSONObject by traversing it. This class was copied from
+ * {@link com.fasterxml.jackson.databind.node.TreeTraversingParser} and then
+ * adapted to be for BSONObject's, rather than JsonNode's.
+ * &lt;p&gt;
+ * While decoding by the cursor uses DBDecoderBsonParser, there are still things
+ * that need to be decoded from the DBObjects, including the result of
+ * findAndModify, and saved objects after saving.
+ *
+ * @author James Roper
+ * @since 1.0
+ */
+public class BsonObjectTraversingParser extends ParserMinimalBase {
+
+    /*
+     * /********************************************************** /*
+     * Configuration /**********************************************************
+     */
+
+    protected ObjectCodec objectCodec;
+
+    /**
+     * Traversal context within tree
+     */
+    protected BsonObjectCursor nodeCursor;
+
+    /*
+     * /********************************************************** /* State
+     * /**********************************************************
+     */
+
+    /**
+     * Sometimes parser needs to buffer a single look-ahead token; if so, it'll
+     * be stored here. This is currently used for handling
+     */
+    protected JsonToken nextToken;
+
+    /**
+     * Flag needed to handle recursion into contents of child Array/Object
+     * nodes.
+     */
+    protected boolean startContainer;
+
+    /**
+     * Flag that indicates whether parser is closed or not. Gets set when parser
+     * is either closed by explicit call ({@link #close}) or when end-of-input
+     * is reached.
+     */
+    protected boolean closed;
+
+    /*
+     * /********************************************************** /* Life-cycle
+     * /**********************************************************
+     */
+    public BsonObjectTraversingParser(
+        Object rootValue,
+        ObjectCodec codec
+    ) {
+<span class="nc" id="L94">        this(new BasicDBObject(&quot;root&quot;, rootValue), null);</span>
+        try {
+<span class="nc" id="L96">            nextToken();</span>
+<span class="nc" id="L97">            nextToken();</span>
+<span class="nc" id="L98">            nextToken();</span>
+<span class="nc" id="L99">        } catch (IOException e) {</span>
+            // Ignore
+<span class="nc" id="L101">        }</span>
+<span class="nc" id="L102">    }</span>
+
+    private BsonObjectTraversingParser(
+        BSONObject o,
+        ObjectCodec codec
+    ) {
+<span class="nc" id="L108">        super(0);</span>
+<span class="nc" id="L109">        objectCodec = codec;</span>
+<span class="nc bnc" id="L110" title="All 2 branches missed.">        if (o instanceof Iterable) {</span>
+<span class="nc" id="L111">            nextToken = JsonToken.START_ARRAY;</span>
+<span class="nc" id="L112">            nodeCursor = new BsonObjectCursor.ArrayCursor((Iterable) o, null);</span>
+        } else {
+<span class="nc" id="L114">            nextToken = JsonToken.START_OBJECT;</span>
+<span class="nc" id="L115">            nodeCursor = new BsonObjectCursor.ObjectCursor(o, null);</span>
+        }
+<span class="nc" id="L117">    }</span>
+
+    @Override
+    public Version version() {
+<span class="nc" id="L121">        return VersionUtils.VERSION;</span>
+    }
+
+    @Override
+    public void setCodec(ObjectCodec c) {
+<span class="nc" id="L126">        objectCodec = c;</span>
+<span class="nc" id="L127">    }</span>
+
+    @Override
+    public ObjectCodec getCodec() {
+<span class="nc" id="L131">        return objectCodec;</span>
+    }
+
+    /*
+     * /********************************************************** /* Closeable
+     * implementation
+     * /**********************************************************
+     */
+
+    @Override
+    public void close() throws IOException {
+<span class="nc bnc" id="L142" title="All 2 branches missed.">        if (!closed) {</span>
+<span class="nc" id="L143">            closed = true;</span>
+<span class="nc" id="L144">            nodeCursor = null;</span>
+<span class="nc" id="L145">            _currToken = null;</span>
+        }
+<span class="nc" id="L147">    }</span>
+
+    /*
+     * /********************************************************** /* Public
+     * API, traversal
+     * /**********************************************************
+     */
+
+    @Override
+    public JsonToken nextToken() throws IOException {
+<span class="nc bnc" id="L157" title="All 2 branches missed.">        if (nextToken != null) {</span>
+<span class="nc" id="L158">            _currToken = nextToken;</span>
+<span class="nc" id="L159">            nextToken = null;</span>
+<span class="nc" id="L160">            return _currToken;</span>
+        }
+        // are we to descend to a container child?
+<span class="nc bnc" id="L163" title="All 2 branches missed.">        if (startContainer) {</span>
+<span class="nc" id="L164">            startContainer = false;</span>
+            // minor optimization: empty containers can be skipped
+<span class="nc bnc" id="L166" title="All 2 branches missed.">            if (!nodeCursor.currentHasChildren()) {</span>
+<span class="nc bnc" id="L167" title="All 2 branches missed.">                _currToken = (_currToken == JsonToken.START_OBJECT) ? JsonToken.END_OBJECT</span>
+<span class="nc" id="L168">                    : JsonToken.END_ARRAY;</span>
+<span class="nc" id="L169">                return _currToken;</span>
+            }
+<span class="nc" id="L171">            nodeCursor = nodeCursor.iterateChildren();</span>
+<span class="nc" id="L172">            _currToken = nodeCursor.nextToken();</span>
+<span class="nc bnc" id="L173" title="All 4 branches missed.">            if (_currToken == JsonToken.START_OBJECT</span>
+                || _currToken == JsonToken.START_ARRAY) {
+<span class="nc" id="L175">                startContainer = true;</span>
+            }
+<span class="nc" id="L177">            return _currToken;</span>
+        }
+        // No more content?
+<span class="nc bnc" id="L180" title="All 2 branches missed.">        if (nodeCursor == null) {</span>
+<span class="nc" id="L181">            closed = true; // if not already set</span>
+<span class="nc" id="L182">            return null;</span>
+        }
+        // Otherwise, next entry from currentFieldName cursor
+<span class="nc" id="L185">        _currToken = nodeCursor.nextToken();</span>
+<span class="nc bnc" id="L186" title="All 2 branches missed.">        if (_currToken != null) {</span>
+<span class="nc bnc" id="L187" title="All 4 branches missed.">            if (_currToken == JsonToken.START_OBJECT</span>
+                || _currToken == JsonToken.START_ARRAY) {
+<span class="nc" id="L189">                startContainer = true;</span>
+            }
+<span class="nc" id="L191">            return _currToken;</span>
+        }
+        // null means no more children; need to return end marker
+<span class="nc" id="L194">        _currToken = nodeCursor.endToken();</span>
+<span class="nc" id="L195">        nodeCursor = nodeCursor.getParent();</span>
+<span class="nc" id="L196">        return _currToken;</span>
+    }
+
+    @Override
+    public JsonParser skipChildren() throws IOException {
+<span class="nc bnc" id="L201" title="All 2 branches missed.">        if (_currToken == JsonToken.START_OBJECT) {</span>
+<span class="nc" id="L202">            startContainer = false;</span>
+<span class="nc" id="L203">            _currToken = JsonToken.END_OBJECT;</span>
+<span class="nc bnc" id="L204" title="All 2 branches missed.">        } else if (_currToken == JsonToken.START_ARRAY) {</span>
+<span class="nc" id="L205">            startContainer = false;</span>
+<span class="nc" id="L206">            _currToken = JsonToken.END_ARRAY;</span>
+        }
+<span class="nc" id="L208">        return this;</span>
+    }
+
+    @Override
+    public boolean isClosed() {
+<span class="nc" id="L213">        return closed;</span>
+    }
+
+    /*
+     * /********************************************************** /* Public
+     * API, token accessors
+     * /**********************************************************
+     */
+
+    @Override
+    public String getCurrentName() {
+<span class="nc bnc" id="L224" title="All 2 branches missed.">        return (nodeCursor == null) ? null : nodeCursor.getCurrentName();</span>
+    }
+
+    @Override
+    public JsonStreamContext getParsingContext() {
+<span class="nc" id="L229">        return nodeCursor;</span>
+    }
+
+    @Override
+    public JsonLocation getTokenLocation() {
+<span class="nc" id="L234">        return JsonLocation.NA;</span>
+    }
+
+    @Override
+    public JsonLocation getCurrentLocation() {
+<span class="nc" id="L239">        return JsonLocation.NA;</span>
+    }
+
+    /*
+     * /********************************************************** /* Public
+     * API, access to textual content
+     * /**********************************************************
+     */
+
+    @Override
+    public String getText() {
+<span class="nc bnc" id="L250" title="All 2 branches missed.">        if (closed) {</span>
+<span class="nc" id="L251">            return null;</span>
+        }
+        // need to separate handling a bit...
+<span class="nc bnc" id="L254" title="All 3 branches missed.">        switch (_currToken) {</span>
+            case FIELD_NAME:
+<span class="nc" id="L256">                return nodeCursor.getCurrentName();</span>
+            case VALUE_STRING:
+            case VALUE_NUMBER_INT:
+            case VALUE_NUMBER_FLOAT:
+            case VALUE_EMBEDDED_OBJECT:
+<span class="nc" id="L261">                return currentNode().toString();</span>
+        }
+
+<span class="nc" id="L264">        return _currToken.asString();</span>
+    }
+
+    @Override
+    public char[] getTextCharacters() throws IOException {
+<span class="nc" id="L269">        return getText().toCharArray();</span>
+    }
+
+    @Override
+    public int getTextLength() throws IOException {
+<span class="nc" id="L274">        return getText().length();</span>
+    }
+
+    @Override
+    public int getTextOffset() throws IOException {
+<span class="nc" id="L279">        return 0;</span>
+    }
+
+    @Override
+    public boolean hasTextCharacters() {
+        // generally we do not have efficient access as char[], hence:
+<span class="nc" id="L285">        return false;</span>
+    }
+
+    /*
+     * /********************************************************** /* Public
+     * API, typed non-text access
+     * /**********************************************************
+     */
+
+    // public byte getByteValue() throws IOException
+
+    @Override
+    public NumberType getNumberType() throws IOException {
+<span class="nc" id="L298">        Object n = currentNode();</span>
+<span class="nc bnc" id="L299" title="All 2 branches missed.">        if (n instanceof Integer) {</span>
+<span class="nc" id="L300">            return NumberType.INT;</span>
+<span class="nc bnc" id="L301" title="All 2 branches missed.">        } else if (n instanceof BigInteger) {</span>
+<span class="nc" id="L302">            return NumberType.BIG_INTEGER;</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">        } else if (n instanceof BigDecimal) {</span>
+<span class="nc" id="L304">            return NumberType.BIG_DECIMAL;</span>
+<span class="nc bnc" id="L305" title="All 2 branches missed.">        } else if (n instanceof Double) {</span>
+<span class="nc" id="L306">            return NumberType.DOUBLE;</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">        } else if (n instanceof Float) {</span>
+<span class="nc" id="L308">            return NumberType.FLOAT;</span>
+<span class="nc bnc" id="L309" title="All 2 branches missed.">        } else if (n instanceof Long) {</span>
+<span class="nc" id="L310">            return NumberType.LONG;</span>
+        } else {
+<span class="nc" id="L312">            throw _constructError(n + &quot; is not a number&quot;);</span>
+        }
+    }
+
+    @Override
+    public BigInteger getBigIntegerValue() throws IOException {
+<span class="nc" id="L318">        Number n = currentNumericNode();</span>
+<span class="nc bnc" id="L319" title="All 2 branches missed.">        if (n instanceof BigInteger) {</span>
+<span class="nc" id="L320">            return (BigInteger) n;</span>
+        } else {
+<span class="nc" id="L322">            return BigInteger.valueOf(n.longValue());</span>
+        }
+    }
+
+    @Override
+    public BigDecimal getDecimalValue() throws IOException {
+<span class="nc" id="L328">        Number n = currentNumericNode();</span>
+<span class="nc bnc" id="L329" title="All 2 branches missed.">        if (n instanceof BigDecimal) {</span>
+<span class="nc" id="L330">            return (BigDecimal) n;</span>
+        } else {
+<span class="nc" id="L332">            return BigDecimal.valueOf(n.doubleValue());</span>
+        }
+    }
+
+    @Override
+    public double getDoubleValue() throws IOException {
+<span class="nc" id="L338">        return currentNumericNode().doubleValue();</span>
+    }
+
+    @Override
+    public float getFloatValue() throws IOException {
+<span class="nc" id="L343">        return currentNumericNode().floatValue();</span>
+    }
+
+    @Override
+    public long getLongValue() throws IOException {
+<span class="nc" id="L348">        return currentNumericNode().longValue();</span>
+    }
+
+    @Override
+    public int getIntValue() throws IOException {
+
+<span class="nc" id="L354">        return currentNumericNode().intValue();</span>
+    }
+
+    @Override
+    public Number getNumberValue() throws IOException {
+<span class="nc" id="L359">        return currentNumericNode();</span>
+    }
+
+    private Number currentNumericNode() throws JsonParseException {
+<span class="nc" id="L363">        Object n = currentNode();</span>
+<span class="nc bnc" id="L364" title="All 2 branches missed.">        if (n instanceof Number) {</span>
+<span class="nc" id="L365">            return (Number) n;</span>
+        } else {
+<span class="nc" id="L367">            throw _constructError(n + &quot; is not a number&quot;);</span>
+        }
+    }
+
+    /*
+     * /********************************************************** /* Public
+     * API, typed binary (base64) access
+     * /**********************************************************
+     */
+
+    @Override
+    public byte[] getBinaryValue(Base64Variant b64variant) throws IOException {
+<span class="nc" id="L379">        Object n = currentNode();</span>
+<span class="nc bnc" id="L380" title="All 2 branches missed.">        if (n instanceof byte[]) {</span>
+<span class="nc" id="L381">            return (byte[]) n;</span>
+<span class="nc bnc" id="L382" title="All 2 branches missed.">        } else if (n instanceof org.bson.types.ObjectId) {</span>
+<span class="nc" id="L383">            return ((org.bson.types.ObjectId) n).toByteArray();</span>
+        }
+<span class="nc" id="L385">        return null;</span>
+    }
+
+    @Override
+    public Object getEmbeddedObject() throws IOException {
+<span class="nc" id="L390">        return currentNode();</span>
+    }
+
+    @Override
+    protected void _handleEOF() throws JsonParseException {
+        // There is no EOF?
+<span class="nc" id="L396">    }</span>
+
+    @Override
+    public void overrideCurrentName(String name) {
+        // Hmm... do nothing?
+<span class="nc" id="L401">    }</span>
+
+    /*
+     * /********************************************************** /* Internal
+     * methods /**********************************************************
+     */
+
+    protected Object currentNode() {
+<span class="nc bnc" id="L409" title="All 4 branches missed.">        if (closed || nodeCursor == null) {</span>
+<span class="nc" id="L410">            return null;</span>
+        }
+<span class="nc" id="L412">        return nodeCursor.currentNode();</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

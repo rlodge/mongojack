@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MongoAnnotationIntrospector.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal</a> &gt; <span class="el_source">MongoAnnotationIntrospector.java</span></div><h1>MongoAnnotationIntrospector.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2011 VZ Netzwerke Ltd
+ * Copyright 2014 devbliss GmbH
+ * 
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.mongojack.internal;
+
+import org.mongojack.DBRef;
+import org.mongojack.Id;
+import org.mongojack.ObjectId;
+
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.introspect.Annotated;
+import com.fasterxml.jackson.databind.introspect.AnnotatedMethod;
+import com.fasterxml.jackson.databind.introspect.NopAnnotationIntrospector;
+import com.fasterxml.jackson.databind.type.TypeFactory;
+import com.fasterxml.jackson.databind.PropertyName;
+
+import java.lang.reflect.Type;
+
+/**
+ * Annotation introspector that supports @ObjectId's
+ *
+ * @author James Roper
+ * @since 1.0
+ */
+public class MongoAnnotationIntrospector extends NopAnnotationIntrospector {
+    private final TypeFactory typeFactory;
+
+<span class="fc" id="L42">    public MongoAnnotationIntrospector(TypeFactory typeFactory) {</span>
+<span class="fc" id="L43">        this.typeFactory = typeFactory;</span>
+<span class="fc" id="L44">    }</span>
+
+    // Handling of javax.persistence.Id
+    @Override
+    public PropertyName findNameForDeserialization(Annotated a) {
+
+<span class="fc" id="L50">        String rawName = findPropertyName(a);</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (rawName != null) {</span>
+<span class="fc" id="L52">            return new PropertyName(rawName);</span>
+        }
+<span class="fc" id="L54">        return null;</span>
+    }
+
+    @Override
+    public PropertyName findNameForSerialization(Annotated a) {
+
+<span class="fc" id="L60">        String rawName = findPropertyName(a);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (rawName != null) {</span>
+<span class="fc" id="L62">            return new PropertyName(rawName);</span>
+        }
+<span class="fc" id="L64">        return null;</span>
+
+    }
+
+    private String findPropertyName(Annotated annotated) {
+
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        if (annotated.hasAnnotation(Id.class)</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">                || annotated.hasAnnotation(javax.persistence.Id.class)) {</span>
+<span class="fc" id="L72">            return &quot;_id&quot;;</span>
+        }
+<span class="fc" id="L74">        return null;</span>
+    }
+
+    private Type getTypeForAnnotated(Annotated a) {
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (a instanceof AnnotatedMethod) {</span>
+<span class="fc" id="L79">            return ((AnnotatedMethod) a).getGenericParameterType(0);</span>
+        } else {
+<span class="fc" id="L81">            return a.getGenericType();</span>
+        }
+    }
+
+    // Handling of ObjectId annotated properties
+    @Override
+    public Object findSerializer(Annotated am) {
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        if (am.hasAnnotation(ObjectId.class)) {</span>
+<span class="fc" id="L89">            return ObjectIdSerializer.class;</span>
+        }
+<span class="fc" id="L91">        return null;</span>
+    }
+
+    @Override
+    public Object findDeserializer(Annotated am) {
+<span class="fc bfc" id="L96" title="All 2 branches covered.">        if (am.hasAnnotation(ObjectId.class)) {</span>
+<span class="fc" id="L97">            return findObjectIdDeserializer(typeFactory.constructType(getTypeForAnnotated(am)));</span>
+        }
+<span class="fc" id="L99">        return null;</span>
+    }
+
+    @Override
+    public JsonDeserializer findContentDeserializer(Annotated am) {
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (am.hasAnnotation(ObjectId.class)) {</span>
+<span class="fc" id="L105">            JavaType type = typeFactory.constructType(getTypeForAnnotated(am));</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">            if (type.isCollectionLikeType()) {</span>
+<span class="fc" id="L107">                return findObjectIdDeserializer(type.containedType(0));</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            } else if (type.isMapLikeType()) {</span>
+<span class="nc" id="L109">                return findObjectIdDeserializer(type.containedType(1));</span>
+            }
+        }
+<span class="fc" id="L112">        return null;</span>
+    }
+
+    public JsonDeserializer findObjectIdDeserializer(JavaType type) {
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        if (type.getRawClass() == String.class) {</span>
+<span class="fc" id="L117">            return new ObjectIdDeserializers.ToStringDeserializer();</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        } else if (type.getRawClass() == byte[].class) {</span>
+<span class="fc" id="L119">            return new ObjectIdDeserializers.ToByteArrayDeserializer();</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        } else if (type.getRawClass() == DBRef.class) {</span>
+            JavaType dbRefType;
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">            if (type.isContainerType()) {</span>
+<span class="nc bnc" id="L123" title="All 2 branches missed.">                if (type.isCollectionLikeType()) {</span>
+<span class="nc" id="L124">                    dbRefType = type.containedType(0);</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">                } else if (type.isMapLikeType()) {</span>
+<span class="nc" id="L126">                    dbRefType = type.containedType(1);</span>
+                } else {
+<span class="nc" id="L128">                    return null;</span>
+                }
+            } else {
+<span class="fc" id="L131">                dbRefType = type;</span>
+            }
+<span class="fc" id="L133">            JsonDeserializer keyDeserializer = findObjectIdDeserializer(dbRefType</span>
+<span class="fc" id="L134">                    .containedType(1));</span>
+<span class="fc" id="L135">            return new DBRefDeserializer(dbRefType.containedType(0),</span>
+<span class="fc" id="L136">                    dbRefType.containedType(1), keyDeserializer);</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        } else if (type.getRawClass() == org.bson.types.ObjectId.class) {</span>
+            // Don't know why someone would annotated an ObjectId with
+            // @ObjectId, but handle it
+<span class="nc" id="L140">            return new ObjectIdDeserializers.ToObjectIdDeserializer();</span>
+        }
+<span class="fc" id="L142">        return null;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

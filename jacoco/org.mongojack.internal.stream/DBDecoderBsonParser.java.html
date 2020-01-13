@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DBDecoderBsonParser.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal.stream</a> &gt; <span class="el_source">DBDecoderBsonParser.java</span></div><h1>DBDecoderBsonParser.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2011 VZ Netzwerke Ltd
+ * Copyright 2014 devbliss GmbH
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.mongojack.internal.stream;
+
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.core.io.IOContext;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import de.undercouch.bson4jackson.BsonParser;
+import de.undercouch.bson4jackson.types.ObjectId;
+
+import java.io.IOException;
+import java.io.InputStream;
+
+/**
+ * Parser that wraps BSONParser to convert bson4jackson ObjectIds to org.bson
+ * ObjectIds, and stores error codes
+ *
+ * @author James Roper
+ * @since 1.1.2
+ */
+public class DBDecoderBsonParser extends BsonParser {
+
+    private final JacksonDBObject&lt;?&gt; dbObject;
+
+    public DBDecoderBsonParser(
+        IOContext ctxt,
+        int jsonFeatures,
+        InputStream in,
+        JacksonDBObject&lt;?&gt; dbObject,
+        ObjectMapper objectMapper
+    ) {
+        // Honor document length must be true
+<span class="fc" id="L50">        super(ctxt, jsonFeatures, Feature.HONOR_DOCUMENT_LENGTH.getMask(), in);</span>
+<span class="fc" id="L51">        this.dbObject = dbObject;</span>
+<span class="fc" id="L52">        setCodec(objectMapper);</span>
+<span class="fc" id="L53">    }</span>
+
+    @Override
+    public String getText() throws IOException, JsonParseException {
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">        if (JsonToken.VALUE_EMBEDDED_OBJECT == getCurrentToken()) {</span>
+<span class="nc" id="L58">            return null;</span>
+        }
+<span class="fc" id="L60">        return super.getText();</span>
+    }
+
+    @Override
+    public Object getEmbeddedObject() throws IOException, JsonParseException {
+<span class="fc" id="L65">        Object object = super.getEmbeddedObject();</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (object instanceof ObjectId) {</span>
+<span class="fc" id="L67">            return ObjectIdConvertor.convert((ObjectId) object);</span>
+        } else {
+<span class="fc" id="L69">            return object;</span>
+        }
+    }
+
+    public boolean handleUnknownProperty(
+        DeserializationContext ctxt,
+        JsonDeserializer&lt;?&gt; deserializer, Object beanOrClass,
+        String propertyName
+    ) throws IOException {
+<span class="nc bnc" id="L78" title="All 4 branches missed.">        if (propertyName.startsWith(&quot;$&quot;) || propertyName.equals(&quot;code&quot;)) {</span>
+            // It's a special server response
+<span class="nc" id="L80">            JsonToken token = getCurrentToken();</span>
+<span class="nc bnc" id="L81" title="All 2 branches missed.">            if (token == JsonToken.FIELD_NAME) {</span>
+<span class="nc" id="L82">                token = nextToken();</span>
+            }
+<span class="nc bnc" id="L84" title="All 4 branches missed.">            if (token == JsonToken.START_ARRAY</span>
+                || token == JsonToken.START_OBJECT) {
+                // The server shouldn't be returning arrays or objects as the
+                // response, skip all children
+<span class="nc" id="L88">                skipChildren();</span>
+            }
+            // Store the value, whatever type it happens to be
+<span class="nc" id="L91">            dbObject.put(propertyName, getEmbeddedObject());</span>
+<span class="nc" id="L92">            return true;</span>
+        }
+<span class="nc" id="L94">        return false;</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

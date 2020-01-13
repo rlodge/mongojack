@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MongoJackInstantDeserializer.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal</a> &gt; <span class="el_source">MongoJackInstantDeserializer.java</span></div><h1>MongoJackInstantDeserializer.java</h1><pre class="source lang-java linenums">package org.mongojack.internal;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
+import java.util.Date;
+
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonTokenId;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.datatype.jsr310.deser.InstantDeserializer;
+
+/**
+ * Patched {@link java.time.Instant} deserializer. Works with bson4jackson-deserialized ISODate() fields
+ *
+ * @author Mikhail Surin
+ */
+public class MongoJackInstantDeserializer extends InstantDeserializer&lt;Instant&gt; {
+    public MongoJackInstantDeserializer() {
+<span class="fc" id="L20">        super(Instant.class, DateTimeFormatter.ISO_INSTANT,</span>
+                Instant::from,
+<span class="nc" id="L22">                a -&gt; Instant.ofEpochMilli(a.value),</span>
+<span class="fc" id="L23">                a -&gt; Instant.ofEpochSecond(a.integer, a.fraction),</span>
+                null,
+                true);
+<span class="fc" id="L26">    }</span>
+
+    @Override
+    public Instant deserialize(JsonParser parser, DeserializationContext context) throws IOException {
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        if (parser.getCurrentTokenId() == JsonTokenId.ID_EMBEDDED_OBJECT) {</span>
+<span class="fc" id="L31">            Object embeddedObject = parser.getEmbeddedObject();</span>
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">            if (embeddedObject instanceof Instant) {</span>
+<span class="nc" id="L33">                return (Instant) embeddedObject;</span>
+            }
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            if (embeddedObject instanceof Date) {</span>
+<span class="fc" id="L36">                return ((Date) embeddedObject).toInstant();</span>
+            }
+        }
+<span class="fc" id="L39">        return super.deserialize(parser, context);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

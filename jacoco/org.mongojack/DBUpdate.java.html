@@ -1,0 +1,683 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DBUpdate.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack</a> &gt; <span class="el_source">DBUpdate.java</span></div><h1>DBUpdate.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2011 VZ Netzwerke Ltd
+ * Copyright 2014 devbliss GmbH
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.mongojack;
+
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mongodb.BasicDBObject;
+import org.bson.BsonDocument;
+import org.bson.codecs.configuration.CodecRegistry;
+import org.bson.conversions.Bson;
+import org.mongojack.internal.update.ComplexUpdateOperationValue;
+import org.mongojack.internal.update.MultiUpdateOperationValue;
+import org.mongojack.internal.update.SingleUpdateOperationValue;
+import org.mongojack.internal.util.DocumentSerializationUtils;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * A database update. This can be used to build queries using the MongoDB
+ * modifier operations. It also will do serialisation of values, however it
+ * won't honour any custom serialisers specified on the fields that those values
+ * are being set.
+ * &lt;p&gt;
+ * The Builder is a Bson, which makes it compatible with the methods in the JacksonMongoCollection that accept
+ * Bson-update objects, and makes those methods interoperable with Mongo's internal Updates class.  But be warned
+ * that Builder.initialize has to be called before Builder.toBsonDocument, or exceptions will result.  JacksonMongoCollection takes care of calling initialize for you.
+ * &lt;/p&gt;
+ *
+ * @author James Roper
+ * @since 1.1
+ *
+ * @deprecated Use com.mongodb.client.model.Updates
+ */
+@Deprecated
+<span class="nc" id="L51">public class DBUpdate {</span>
+
+    /**
+     * Increment the given field atomically by one
+     *
+     * @param field
+     *            The field to increment
+     * @return this object
+     */
+    public static Builder inc(String field) {
+<span class="fc" id="L61">        return inc(field, 1);</span>
+    }
+
+    /**
+     * Increment the given field atomically by the given value
+     *
+     * @param field
+     *            The field to increment
+     * @param by
+     *            The value to increment by
+     * @return this object
+     */
+    public static Builder inc(String field, int by) {
+<span class="fc" id="L74">        return new Builder().inc(field, by);</span>
+    }
+
+    /**
+     * Set the given field (can be multiple levels deep) to the given value
+     * atomically
+     *
+     * @param field
+     *            The field to set
+     * @param value
+     *            The value to set it to
+     * @return this object
+     */
+    public static Builder set(String field, Object value) {
+<span class="fc" id="L88">        return new Builder().set(field, value);</span>
+    }
+
+    /**
+     * Unset the given field atomically
+     *
+     * @param field
+     *            The field to unset
+     * @return this object
+     */
+    public static Builder unset(String field) {
+<span class="fc" id="L99">        return new Builder().unset(field);</span>
+    }
+
+    /**
+     * Add the given value to the array value at the specified field atomically
+     *
+     * @param field
+     *            The field to add the value to
+     * @param value
+     *            The value to add
+     * @return this object
+     */
+    public static Builder push(String field, Object value) {
+<span class="fc" id="L112">        return new Builder().push(field, value);</span>
+    }
+
+    /**
+     * Add all of the given values to the array value at the specified field
+     * atomically
+     *
+     * @param field
+     *            The field to add the values to
+     * @param values
+     *            The values to add
+     * @return this object
+     */
+    public static Builder pushAll(String field, Object... values) {
+<span class="fc" id="L126">        return new Builder().pushAll(field, values);</span>
+    }
+
+    /**
+     * Add all of the given values to the array value at the specified field
+     * atomically
+     *
+     * @param field
+     *            The field to add the values to
+     * @param values
+     *            The values to add
+     * @return this object
+     */
+    public static Builder pushAll(String field, List&lt;?&gt; values) {
+<span class="fc" id="L140">        return new Builder().pushAll(field, values);</span>
+    }
+
+    /**
+     * Add the given value to the array value if it doesn't already exist in the
+     * specified field atomically
+     *
+     * @param field
+     *            The field to add the value to
+     * @param value
+     *            The value to add
+     * @return this object
+     */
+    public static Builder addToSet(String field, Object value) {
+<span class="fc" id="L154">        return new Builder().addToSet(field, value);</span>
+    }
+
+    /**
+     * Add the given values to the array value if they don't already exist in
+     * the specified field atomically
+     *
+     * @param field
+     *            The field to add the values to
+     * @param values
+     *            The values to add
+     * @return this object
+     */
+    public static Builder addToSet(String field, Object... values) {
+<span class="fc" id="L168">        return new Builder().addToSet(field, values);</span>
+    }
+
+    /**
+     * Add the given values to the array value if they don't already exist in
+     * the specified field atomically
+     *
+     * @param field
+     *            The field to add the values to
+     * @param values
+     *            The values to add
+     * @return this object
+     */
+    public static Builder addToSet(String field, List&lt;?&gt; values) {
+<span class="fc" id="L182">        return new Builder().addToSet(field, values);</span>
+    }
+
+    /**
+     * Remove the first value from the array specified by field atomically
+     *
+     * @param field
+     *            The field to remove the value from
+     * @return this object
+     */
+    public static Builder popFirst(String field) {
+<span class="fc" id="L193">        return new Builder().popFirst(field);</span>
+    }
+
+    /**
+     * Remove the last value from the array specified by field atomically
+     *
+     * @param field
+     *            The field to remove the value from
+     * @return this object
+     */
+    public static Builder popLast(String field) {
+<span class="fc" id="L204">        return new Builder().popLast(field);</span>
+    }
+
+    /**
+     * Remove all occurances of value from the array at field
+     *
+     * @param field
+     *            The field to remove the value from
+     * @param value
+     *            The value to remove. This may be another query.
+     * @return this object
+     */
+    public static Builder pull(String field, Object value) {
+<span class="fc" id="L217">        return new Builder().pull(field, value);</span>
+    }
+
+    /**
+     * Remove all occurances of the values from the array at field
+     *
+     * @param field
+     *            The field to remove the values from
+     * @param values
+     *            The values to remove
+     * @return this object
+     */
+    public static Builder pullAll(String field, Object... values) {
+<span class="fc" id="L230">        return new Builder().pullAll(field, values);</span>
+    }
+
+    /**
+     * Remove all occurances of the values from the array at field
+     *
+     * @param field
+     *            The field to remove the values from
+     * @param values
+     *            The values to remove
+     * @return this object
+     */
+    public static Builder pullAll(String field, List&lt;?&gt; values) {
+<span class="fc" id="L243">        return new Builder().pullAll(field, values);</span>
+    }
+
+    /**
+     * Rename the given field to the new field name
+     *
+     * @param oldFieldName
+     *            The old field name
+     * @param newFieldName
+     *            The new field name
+     * @return this object
+     */
+    public static Builder rename(String oldFieldName, String newFieldName) {
+<span class="fc" id="L256">        return new Builder().rename(oldFieldName, newFieldName);</span>
+    }
+
+    /**
+     * Perform a bit operation on the given field
+     *
+     * @param field
+     *            The field to perform the operation on
+     * @param operation
+     *            The operation to perform
+     * @param value
+     *            The value
+     * @return this object
+     */
+    public static Builder bit(String field, String operation, int value) {
+<span class="fc" id="L271">        return new Builder().bit(field, operation, value);</span>
+    }
+
+    /**
+     * Perform two bit operations on the given field
+     *
+     * @param field
+     *            The field to perform the operations on
+     * @param operation1
+     *            The first operation to perform
+     * @param value1
+     *            The first value
+     * @param operation2
+     *            The second operation to perform
+     * @param value2
+     *            The second value
+     * @return this object
+     */
+    public static Builder bit(String field, String operation1, int value1,
+            String operation2, int value2) {
+<span class="fc" id="L291">        return new Builder().bit(field, operation1, value1, operation2, value2);</span>
+    }
+
+    /**
+     * Perform a bitwise and on the given field
+     *
+     * @param field
+     *            The field to perform the and on
+     * @param value
+     *            The value
+     * @return this object
+     */
+    public static Builder bitwiseAnd(String field, int value) {
+<span class="fc" id="L304">        return new Builder().bitwiseAnd(field, value);</span>
+    }
+
+    /**
+     * Perform a bitwise or on the given field
+     *
+     * @param field
+     *            The field to perform the or on
+     * @param value
+     *            The value
+     * @return this object
+     */
+    public static Builder bitwiseOr(String field, int value) {
+<span class="fc" id="L317">        return new Builder().bitwiseOr(field, value);</span>
+    }
+
+    /**
+     * The builder
+     */
+<span class="fc" id="L323">    public static class Builder implements Bson, InitializationRequiredForTransformation {</span>
+
+<span class="fc" id="L325">        private final Map&lt;String, Map&lt;String, UpdateOperationValue&gt;&gt; update = new HashMap&lt;String, Map&lt;String, UpdateOperationValue&gt;&gt;();</span>
+        private ObjectMapper objectMapper;
+        private JavaType type;
+        private CodecRegistry codecRegistry;
+
+        /**
+         * Increment the given field atomically by one
+         *
+         * @param field
+         *            The field to increment
+         * @return this object
+         */
+        public Builder inc(String field) {
+<span class="fc" id="L338">            return inc(field, 1);</span>
+        }
+
+        /**
+         * Increment the given field atomically by the given value
+         *
+         * @param field
+         *            The field to increment
+         * @param by
+         *            The value to increment by
+         * @return this object
+         */
+        public Builder inc(String field, int by) {
+<span class="fc" id="L351">            return addOperation(&quot;$inc&quot;, field, new SingleUpdateOperationValue(</span>
+<span class="fc" id="L352">                    false, false, by));</span>
+        }
+
+        /**
+         * Set the given field (can be multiple levels deep) to the given value
+         * atomically
+         *
+         * @param field
+         *            The field to set
+         * @param value
+         *            The value to set it to
+         * @return this object
+         */
+        public Builder set(String field, Object value) {
+<span class="fc" id="L366">            return addOperation(&quot;$set&quot;, field, new SingleUpdateOperationValue(</span>
+                    false, true, value));
+        }
+
+        /**
+         * Unset the given field atomically
+         *
+         * @param field
+         *            The field to unset
+         * @return this object
+         */
+        public Builder unset(String field) {
+<span class="fc" id="L378">            return addOperation(&quot;$unset&quot;, field,</span>
+<span class="fc" id="L379">                    new SingleUpdateOperationValue(false, false, 1));</span>
+        }
+
+        /**
+         * Add the given value to the array value at the specified field
+         * atomically
+         *
+         * @param field
+         *            The field to add the value to
+         * @param value
+         *            The value to add
+         * @return this object
+         */
+        public Builder push(String field, Object value) {
+<span class="fc" id="L393">            return addOperation(&quot;$push&quot;, field, new SingleUpdateOperationValue(</span>
+                    true, true, value));
+        }
+
+        /**
+         * Add all of the given values to the array value at the specified field
+         * atomically
+         *
+         * @param field
+         *            The field to add the values to
+         * @param values
+         *            The values to add
+         * @return this object
+         */
+        public Builder pushAll(String field, Object... values) {
+<span class="fc" id="L408">            return addOperation(&quot;$push&quot;, field,</span>
+                    new MultiUpdateOperationValue(true, true, values));
+        }
+
+        /**
+         * Add all of the given values to the array value at the specified field
+         * atomically
+         *
+         * @param field
+         *            The field to add the values to
+         * @param values
+         *            The values to add
+         * @return this object
+         */
+        public Builder pushAll(String field, List&lt;?&gt; values) {
+<span class="fc" id="L423">            return addOperation(&quot;$push&quot;, field,</span>
+                    new MultiUpdateOperationValue(true, true, values));
+        }
+
+        /**
+         * Add the given value to the array value if it doesn't already exist in
+         * the specified field atomically
+         *
+         * @param field
+         *            The field to add the value to
+         * @param value
+         *            The value to add
+         * @return this object
+         */
+        public Builder addToSet(String field, Object value) {
+<span class="fc" id="L438">            return addOperation(&quot;$addToSet&quot;, field,</span>
+                    new SingleUpdateOperationValue(true, true, value));
+        }
+
+        /**
+         * Add the given values to the array value if they don't already exist
+         * in the specified field atomically
+         *
+         * @param field
+         *            The field to add the values to
+         * @param values
+         *            The values to add
+         * @return this object
+         */
+        public Builder addToSet(String field, Object... values) {
+<span class="fc" id="L453">            return addOperation(&quot;$addToSet&quot;, field,</span>
+                    new MultiUpdateOperationValue(true, true, values));
+        }
+
+        /**
+         * Add the given values to the array value if they don't already exist
+         * in the specified field atomically
+         *
+         * @param field
+         *            The field to add the values to
+         * @param values
+         *            The values to add
+         * @return this object
+         */
+        public Builder addToSet(String field, List&lt;?&gt; values) {
+<span class="fc" id="L468">            return addOperation(&quot;$addToSet&quot;, field,</span>
+                    new MultiUpdateOperationValue(true, true, values));
+        }
+
+        /**
+         * Remove the first value from the array specified by field atomically
+         *
+         * @param field
+         *            The field to remove the value from
+         * @return this object
+         */
+        public Builder popFirst(String field) {
+<span class="fc" id="L480">            return addOperation(&quot;$pop&quot;, field, new SingleUpdateOperationValue(</span>
+<span class="fc" id="L481">                    true, false, -1));</span>
+        }
+
+        /**
+         * Remove the last value from the array specified by field atomically
+         *
+         * @param field
+         *            The field to remove the value from
+         * @return this object
+         */
+        public Builder popLast(String field) {
+<span class="fc" id="L492">            return addOperation(&quot;$pop&quot;, field, new SingleUpdateOperationValue(</span>
+<span class="fc" id="L493">                    true, false, 1));</span>
+        }
+
+        /**
+         * Remove all occurances of value from the array at field
+         *
+         * @param field
+         *            The field to remove the value from
+         * @param value
+         *            The value to remove. This may be another query.
+         * @return this object
+         */
+        public Builder pull(String field, Object value) {
+<span class="fc" id="L506">            return addOperation(&quot;$pull&quot;, field, new SingleUpdateOperationValue(</span>
+                    true, true, value));
+        }
+
+        /**
+         * Remove all occurances of the values from the array at field
+         *
+         * @param field
+         *            The field to remove the values from
+         * @param values
+         *            The values to remove
+         * @return this object
+         */
+        public Builder pullAll(String field, Object... values) {
+<span class="fc" id="L520">            return addOperation(&quot;$pullAll&quot;, field,</span>
+                    new MultiUpdateOperationValue(true, true, values));
+        }
+
+        /**
+         * Remove all occurances of the values from the array at field
+         *
+         * @param field
+         *            The field to remove the values from
+         * @param values
+         *            The values to remove
+         * @return this object
+         */
+        public Builder pullAll(String field, List&lt;?&gt; values) {
+<span class="fc" id="L534">            return addOperation(&quot;$pullAll&quot;, field,</span>
+                    new MultiUpdateOperationValue(true, true, values));
+        }
+
+        /**
+         * Rename the given field to the new field name
+         *
+         * @param oldFieldName
+         *            The old field name
+         * @param newFieldName
+         *            The new field name
+         * @return this object
+         */
+        public Builder rename(String oldFieldName, String newFieldName) {
+<span class="fc" id="L548">            return addOperation(&quot;$rename&quot;, oldFieldName,</span>
+                    new SingleUpdateOperationValue(false, false, newFieldName));
+        }
+
+        /**
+         * Perform a bit operation on the given field
+         *
+         * @param field
+         *            The field to perform the operation on
+         * @param operation
+         *            The operation to perform
+         * @param value
+         *            The value
+         * @return this object
+         */
+        public Builder bit(String field, String operation, int value) {
+<span class="fc" id="L564">            return addOperation(&quot;$bit&quot;, field, new ComplexUpdateOperationValue(</span>
+<span class="fc" id="L565">                    new BasicDBObject(operation, value)));</span>
+        }
+
+        /**
+         * Perform two bit operations on the given field
+         *
+         * @param field
+         *            The field to perform the operations on
+         * @param operation1
+         *            The first operation to perform
+         * @param value1
+         *            The first value
+         * @param operation2
+         *            The second operation to perform
+         * @param value2
+         *            The second value
+         * @return this object
+         */
+        public Builder bit(String field, String operation1, int value1,
+                String operation2, int value2) {
+<span class="fc" id="L585">            return addOperation(&quot;$bit&quot;, field,</span>
+                    new ComplexUpdateOperationValue(new BasicDBObject(
+<span class="fc" id="L587">                            operation1, value1).append(operation2, value2)));</span>
+        }
+
+        /**
+         * Perform a bitwise and on the given field
+         *
+         * @param field
+         *            The field to perform the and on
+         * @param value
+         *            The value
+         * @return this object
+         */
+        public Builder bitwiseAnd(String field, int value) {
+<span class="fc" id="L600">            return bit(field, &quot;and&quot;, value);</span>
+        }
+
+        /**
+         * Perform a bitwise or on the given field
+         *
+         * @param field
+         *            The field to perform the or on
+         * @param value
+         *            The value
+         * @return this object
+         */
+        public Builder bitwiseOr(String field, int value) {
+<span class="fc" id="L613">            return bit(field, &quot;or&quot;, value);</span>
+        }
+
+        /**
+         * Add a raw operation. This may be useful in case of MongoDB adding new
+         * features that aren't yet available through this interface, or if
+         * something has been left out. Note that no serialisation will be
+         * attempted of the values.
+         *
+         * @param op
+         *            The operation
+         * @param field
+         *            The field to set the value on
+         * @param value
+         *            The value to set
+         * @return this object
+         */
+        public Builder addRawOperation(String op, String field, Object value) {
+<span class="nc" id="L631">            return addOperation(op, field, new SingleUpdateOperationValue(</span>
+                    false, false, value));
+        }
+
+        /**
+         * Add an operation to the update
+         *
+         * @param modifier
+         *            The modifier of the operation
+         * @param field
+         *            The field to set
+         * @param value
+         *            The value to modify it with.
+         * @return this object
+         */
+        public Builder addOperation(String modifier, String field,
+                UpdateOperationValue value) {
+<span class="fc bfc" id="L648" title="All 2 branches covered.">            if (update.containsKey(modifier)) {</span>
+<span class="fc" id="L649">                Map&lt;String, UpdateOperationValue&gt; existing = update</span>
+<span class="fc" id="L650">                        .get(modifier);</span>
+<span class="fc" id="L651">                existing.put(field, value);</span>
+<span class="fc" id="L652">            } else {</span>
+<span class="fc" id="L653">                Map&lt;String, UpdateOperationValue&gt; newMap = new HashMap&lt;String, UpdateOperationValue&gt;();</span>
+<span class="fc" id="L654">                newMap.put(field, value);</span>
+<span class="fc" id="L655">                update.put(modifier, newMap);</span>
+            }
+<span class="fc" id="L657">            return this;</span>
+        }
+
+        /**
+         * Checks if the update is empty
+         *
+         * @return true if the update is empty
+         */
+        public boolean isEmpty() {
+<span class="fc" id="L666">            return update.isEmpty();</span>
+        }
+
+        @Override
+        public &lt;TDocument&gt; BsonDocument toBsonDocument(final Class&lt;TDocument&gt; tDocumentClass, final CodecRegistry codecRegistry) {
+<span class="fc" id="L671">            return DocumentSerializationUtils.serializeDBUpdate(update, objectMapper, type, codecRegistry).toBsonDocument(tDocumentClass, codecRegistry);</span>
+        }
+
+        @Override
+        public void initialize(final ObjectMapper objectMapper, final JavaType type, final JacksonCodecRegistry codecRegistry) {
+<span class="fc" id="L676">            this.objectMapper = objectMapper;</span>
+<span class="fc" id="L677">            this.type = type;</span>
+<span class="fc" id="L678">            this.codecRegistry = codecRegistry;</span>
+<span class="fc" id="L679">        }</span>
+
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

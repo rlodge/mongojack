@@ -1,0 +1,784 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DocumentSerializationUtils.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal.util</a> &gt; <span class="el_source">DocumentSerializationUtils.java</span></div><h1>DocumentSerializationUtils.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2011 VZ Netzwerke Ltd
+ * Copyright 2014 devbliss GmbH
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.mongojack.internal.util;
+
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.ser.BeanPropertyWriter;
+import com.fasterxml.jackson.databind.ser.ContainerSerializer;
+import com.fasterxml.jackson.databind.ser.std.BeanSerializerBase;
+import com.fasterxml.jackson.databind.ser.std.MapSerializer;
+import com.mongodb.MongoException;
+import org.bson.BsonDocumentReader;
+import org.bson.Document;
+import org.bson.codecs.DecoderContext;
+import org.bson.codecs.configuration.CodecRegistry;
+import org.bson.conversions.Bson;
+import org.bson.types.ObjectId;
+import org.mongojack.Aggregation;
+import org.mongojack.Aggregation.Expression;
+import org.mongojack.Aggregation.Group.Accumulator;
+import org.mongojack.Aggregation.Pipeline;
+import org.mongojack.DBProjection.ProjectionBuilder;
+import org.mongojack.DBQuery;
+import org.mongojack.DBRef;
+import org.mongojack.MongoJsonMappingException;
+import org.mongojack.internal.ObjectIdSerializer;
+import org.mongojack.internal.object.BsonObjectGenerator;
+import org.mongojack.internal.query.CollectionQueryCondition;
+import org.mongojack.internal.query.CompoundQueryCondition;
+import org.mongojack.QueryCondition;
+import org.mongojack.internal.query.SimpleQueryCondition;
+import org.mongojack.internal.update.MultiUpdateOperationValue;
+import org.mongojack.UpdateOperationValue;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.regex.Pattern;
+
+/**
+ * Utilities for helping with serialisation
+ */
+<span class="nc" id="L68">public class DocumentSerializationUtils {</span>
+
+    private static final Set&lt;Class&lt;?&gt;&gt; BASIC_TYPES;
+
+    static {
+<span class="fc" id="L73">        Set&lt;Class&lt;?&gt;&gt; types = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L74">        types.add(String.class);</span>
+<span class="fc" id="L75">        types.add(Integer.class);</span>
+<span class="fc" id="L76">        types.add(Boolean.class);</span>
+<span class="fc" id="L77">        types.add(Short.class);</span>
+<span class="fc" id="L78">        types.add(Long.class);</span>
+<span class="fc" id="L79">        types.add(BigInteger.class);</span>
+<span class="fc" id="L80">        types.add(Float.class);</span>
+<span class="fc" id="L81">        types.add(Double.class);</span>
+<span class="fc" id="L82">        types.add(Byte.class);</span>
+<span class="fc" id="L83">        types.add(Character.class);</span>
+<span class="fc" id="L84">        types.add(BigDecimal.class);</span>
+<span class="fc" id="L85">        types.add(int[].class);</span>
+<span class="fc" id="L86">        types.add(boolean[].class);</span>
+<span class="fc" id="L87">        types.add(short[].class);</span>
+<span class="fc" id="L88">        types.add(long[].class);</span>
+<span class="fc" id="L89">        types.add(float[].class);</span>
+<span class="fc" id="L90">        types.add(double[].class);</span>
+<span class="fc" id="L91">        types.add(byte[].class);</span>
+<span class="fc" id="L92">        types.add(char[].class);</span>
+<span class="fc" id="L93">        types.add(Date.class);</span>
+        // Patterns are used by the regex method of the query builder
+<span class="fc" id="L95">        types.add(Pattern.class);</span>
+        // Native types that we support
+<span class="fc" id="L97">        types.add(ObjectId.class);</span>
+<span class="fc" id="L98">        types.add(DBRef.class);</span>
+<span class="fc" id="L99">        BASIC_TYPES = types;</span>
+<span class="fc" id="L100">    }</span>
+
+    /**
+     * Serialize the fields of the given object using the given object mapper.
+     * This will convert POJOs to Documents where necessary.
+     *
+     * @param objectMapper The object mapper to use to do the serialization
+     * @param object       The object to serialize the fields of
+     * @param registry     Codec registry
+     * @return The Document, safe for serialization to MongoDB
+     */
+    public static Bson serializeFields(
+        ObjectMapper objectMapper,
+        Bson object,
+        CodecRegistry registry
+    ) {
+<span class="fc" id="L116">        return object.toBsonDocument(Document.class, registry);</span>
+    }
+
+    public static Bson serializeQuery(
+        ObjectMapper objectMapper,
+        JavaType type, DBQuery.Query query
+    ) {
+<span class="fc" id="L123">        SerializerProvider serializerProvider = JacksonAccessor</span>
+<span class="fc" id="L124">            .getSerializerProvider(objectMapper);</span>
+<span class="fc" id="L125">        JsonSerializer serializer = JacksonAccessor.findValueSerializer(</span>
+            serializerProvider, type);
+<span class="fc" id="L127">        return serializeQuery(serializerProvider, serializer, query);</span>
+    }
+
+    private static Bson serializeQuery(
+        SerializerProvider serializerProvider, JsonSerializer&lt;?&gt; serializer,
+        DBQuery.Query query
+    ) {
+<span class="fc" id="L134">        Document serializedQuery = new Document();</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        for (Map.Entry&lt;String, QueryCondition&gt; field : query.conditions()) {</span>
+<span class="fc" id="L136">            String key = field.getKey();</span>
+<span class="fc" id="L137">            QueryCondition condition = field.getValue();</span>
+<span class="fc" id="L138">            serializedQuery.put(</span>
+                key,
+<span class="fc" id="L140">                serializeQueryCondition(serializerProvider, serializer, key, condition)</span>
+            );
+<span class="fc" id="L142">        }</span>
+<span class="fc" id="L143">        return serializedQuery;</span>
+    }
+
+
+    private static Object serializeQueryCondition(
+        SerializerProvider serializerProvider, JsonSerializer&lt;?&gt; serializer,
+        String key, QueryCondition condition
+    ) {
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        if (condition instanceof SimpleQueryCondition) {</span>
+<span class="fc" id="L152">            SimpleQueryCondition simple = (SimpleQueryCondition) condition;</span>
+<span class="pc bpc" id="L153" title="1 of 4 branches missed.">            if (!simple.requiresSerialization() || simple.getValue() == null) {</span>
+<span class="fc" id="L154">                return simple.getValue();</span>
+            } else {
+<span class="fc bfc" id="L156" title="All 2 branches covered.">                if (!isOperator(key)) {</span>
+<span class="fc" id="L157">                    serializer = findQuerySerializer(false, key,</span>
+                        serializerProvider, serializer
+                    );
+                }
+<span class="fc" id="L161">                return serializeQueryField(simple.getValue(), serializer,</span>
+                    serializerProvider, key
+                );
+            }
+<span class="fc bfc" id="L165" title="All 2 branches covered.">        } else if (condition instanceof CollectionQueryCondition) {</span>
+<span class="fc" id="L166">            CollectionQueryCondition coll = (CollectionQueryCondition) condition;</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">            if (!isOperator(key)) {</span>
+<span class="nc" id="L168">                serializer = findQuerySerializer(coll.targetIsCollection(),</span>
+                    key, serializerProvider, serializer
+                );
+            }
+<span class="fc" id="L172">            List&lt;Object&gt; serializedConditions = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">            for (QueryCondition item : coll.getValues()) {</span>
+<span class="fc" id="L174">                serializedConditions.add(serializeQueryCondition(</span>
+                    serializerProvider, serializer, &quot;$&quot;, item));
+<span class="fc" id="L176">            }</span>
+<span class="fc" id="L177">            return serializedConditions;</span>
+        } else {
+<span class="fc" id="L179">            CompoundQueryCondition compound = (CompoundQueryCondition) condition;</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">            if (!isOperator(key)) {</span>
+<span class="fc" id="L181">                serializer = findQuerySerializer(compound.targetIsCollection(), key, serializerProvider, serializer);</span>
+            }
+<span class="fc" id="L183">            return serializeQuery(serializerProvider, serializer,</span>
+<span class="fc" id="L184">                compound.getQuery()</span>
+            );
+        }
+    }
+
+    private static boolean isOperator(String key) {
+<span class="fc" id="L190">        return key.startsWith(&quot;$&quot;);</span>
+    }
+
+    private static Object serializeQueryField(
+        Object value,
+        JsonSerializer serializer, SerializerProvider serializerProvider,
+        String op
+    ) {
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (serializer == null) {</span>
+<span class="pc bpc" id="L199" title="1 of 4 branches missed.">            if (value == null || BASIC_TYPES.contains(value.getClass())) {</span>
+                // Return as is
+<span class="fc" id="L201">                return value;</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">            } else if (value instanceof Collection) {</span>
+<span class="nc" id="L203">                Collection&lt;?&gt; coll = (Collection&lt;?&gt;) value;</span>
+<span class="nc" id="L204">                List&lt;Object&gt; copy = null;</span>
+<span class="nc" id="L205">                int position = 0;</span>
+<span class="nc bnc" id="L206" title="All 2 branches missed.">                for (Object item : coll) {</span>
+<span class="nc" id="L207">                    Object returned = serializeQueryField(item, null,</span>
+                        serializerProvider, op
+                    );
+<span class="nc bnc" id="L210" title="All 2 branches missed.">                    if (returned != item) {</span>
+<span class="nc bnc" id="L211" title="All 2 branches missed.">                        if (copy == null) {</span>
+<span class="nc" id="L212">                            copy = new ArrayList&lt;&gt;(coll);</span>
+                        }
+<span class="nc" id="L214">                        copy.set(position, returned);</span>
+                    }
+<span class="nc" id="L216">                    position++;</span>
+<span class="nc" id="L217">                }</span>
+<span class="nc bnc" id="L218" title="All 2 branches missed.">                if (copy != null) {</span>
+<span class="nc" id="L219">                    return copy;</span>
+                } else {
+<span class="nc" id="L221">                    return coll;</span>
+                }
+<span class="pc bpc" id="L223" title="1 of 2 branches missed.">            } else if (value.getClass().isArray()) {</span>
+<span class="nc bnc" id="L224" title="All 2 branches missed.">                if (BASIC_TYPES.contains(value.getClass().getComponentType())) {</span>
+<span class="nc" id="L225">                    return value;</span>
+                }
+<span class="nc" id="L227">                Object[] array = (Object[]) value;</span>
+<span class="nc" id="L228">                Object[] copy = null;</span>
+<span class="nc bnc" id="L229" title="All 2 branches missed.">                for (int i = 0; i &lt; array.length; i++) {</span>
+<span class="nc" id="L230">                    Object returned = serializeQueryField(array[i], null,</span>
+                        serializerProvider, op
+                    );
+<span class="nc bnc" id="L233" title="All 2 branches missed.">                    if (returned != array[i]) {</span>
+<span class="nc bnc" id="L234" title="All 2 branches missed.">                        if (copy == null) {</span>
+<span class="nc" id="L235">                            copy = new Object[array.length];</span>
+<span class="nc" id="L236">                            System.arraycopy(array, 0, copy, 0, array.length);</span>
+                        }
+<span class="nc" id="L238">                        copy[i] = returned;</span>
+                    }
+                }
+<span class="nc bnc" id="L241" title="All 2 branches missed.">                if (copy != null) {</span>
+<span class="nc" id="L242">                    return copy;</span>
+                } else {
+<span class="nc" id="L244">                    return array;</span>
+                }
+            } else {
+                // We don't know what it is, just find a serializer for it
+<span class="fc" id="L248">                serializer = JacksonAccessor.findValueSerializer(</span>
+<span class="fc" id="L249">                    serializerProvider, value.getClass());</span>
+            }
+        }
+<span class="fc" id="L252">        BsonObjectGenerator objectGenerator = new BsonObjectGenerator();</span>
+        try {
+<span class="fc" id="L254">            serializer.serialize(value, objectGenerator, serializerProvider);</span>
+<span class="nc" id="L255">        } catch (IOException e) {</span>
+<span class="nc" id="L256">            throw new MongoJsonMappingException(&quot;Error serializing value &quot;</span>
+                + value + &quot; in DBQuery operation &quot; + op, e);
+<span class="fc" id="L258">        }</span>
+<span class="fc" id="L259">        return objectGenerator.getValue();</span>
+    }
+
+    public static Bson serializeFilter(
+        ObjectMapper objectMapper,
+        JavaType type, Bson query, CodecRegistry registry
+    ) {
+<span class="fc" id="L266">        SerializerProvider serializerProvider = JacksonAccessor</span>
+<span class="fc" id="L267">            .getSerializerProvider(objectMapper);</span>
+<span class="fc" id="L268">        JsonSerializer serializer = JacksonAccessor.findValueSerializer(</span>
+            serializerProvider, type);
+        try {
+<span class="fc" id="L271">            return serializeFilter(serializerProvider, serializer, query, registry);</span>
+<span class="fc" id="L272">        } catch (Exception e) {</span>
+<span class="fc" id="L273">            throw new MongoException(&quot;Error parsing query&quot;, e);</span>
+        }
+    }
+
+    private static Bson serializeFilter(
+        SerializerProvider serializerProvider,
+        JsonSerializer&lt;?&gt; serializer,
+        Bson query,
+        CodecRegistry registry
+    ) {
+        // not sure this is the best way to do it.  But you can't get anything out of a Bson but a BsonDocument...
+<span class="fc" id="L284">        final Map&lt;String, Object&gt; decoded = registry.get(Map.class).decode(new BsonDocumentReader(query.toBsonDocument(Document.class, registry)), DecoderContext.builder().build());</span>
+<span class="fc" id="L285">        return serializeFilter(serializerProvider, serializer, decoded);</span>
+    }
+
+    private static Bson serializeFilter(final SerializerProvider serializerProvider, final JsonSerializer&lt;?&gt; serializer, final Map&lt;String, Object&gt; decoded) {
+<span class="fc" id="L289">        Document serializedQuery = new Document();</span>
+<span class="fc bfc" id="L290" title="All 2 branches covered.">        for (Entry&lt;String, Object&gt; field : decoded.entrySet()) {</span>
+<span class="fc" id="L291">            String key = field.getKey();</span>
+<span class="fc" id="L292">            Object condition = field.getValue();</span>
+<span class="fc" id="L293">            serializedQuery.put(</span>
+                key,
+<span class="fc" id="L295">                serializeFilterCondition(serializerProvider, serializer, key, condition, key.matches(&quot;^\\$(?:in|nin|all)$&quot;))</span>
+            );
+<span class="fc" id="L297">        }</span>
+<span class="fc" id="L298">        return serializedQuery;</span>
+    }
+
+    private static Object serializeFilterCondition(
+        SerializerProvider serializerProvider,
+        JsonSerializer&lt;?&gt; serializer,
+        String key,
+        Object condition,
+        boolean targetIsCollection
+    ) {
+<span class="fc bfc" id="L308" title="All 2 branches covered.">        if (condition instanceof Collection) {</span>
+<span class="fc bfc" id="L309" title="All 2 branches covered.">            if (!isOperator(key)) {</span>
+<span class="fc" id="L310">                serializer = findQuerySerializer(targetIsCollection, key, serializerProvider, serializer);</span>
+            }
+<span class="fc" id="L312">            List&lt;Object&gt; serializedConditions = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">            for (Object item : (Collection&lt;Object&gt;)condition) {</span>
+<span class="fc" id="L314">                serializedConditions.add(serializeFilterCondition(serializerProvider, serializer, &quot;$&quot;, item, targetIsCollection));</span>
+<span class="fc" id="L315">            }</span>
+<span class="fc" id="L316">            return serializedConditions;</span>
+<span class="fc bfc" id="L317" title="All 2 branches covered.">        } else if (condition instanceof Map) {</span>
+<span class="fc bfc" id="L318" title="All 2 branches covered.">            if (!isOperator(key)) {</span>
+<span class="fc" id="L319">                serializer = findQuerySerializer(targetIsCollection, key, serializerProvider, serializer);</span>
+            }
+<span class="fc" id="L321">            return serializeFilter(serializerProvider, serializer, (Map&lt;String, Object&gt;)condition);</span>
+        } else {
+<span class="fc bfc" id="L323" title="All 2 branches covered.">            if (!isOperator(key)) {</span>
+<span class="fc" id="L324">                serializer = findQuerySerializer(false, key, serializerProvider, serializer);</span>
+            }
+<span class="fc" id="L326">            return serializeQueryField(condition, serializer, serializerProvider, key);</span>
+        }
+    }
+
+    /**
+     * Serialize the given field
+     *
+     * @param objectMapper The object mapper to serialize it with
+     * @param value        The value to serialize
+     * @param registry     The codec registry to be used for serialization
+     * @return The serialized field. May return the same object if no
+     * serialization was necessary.
+     */
+    public static Object serializeField(ObjectMapper objectMapper, Object value, CodecRegistry registry) {
+<span class="pc bpc" id="L340" title="1 of 4 branches missed.">        if (value == null || BASIC_TYPES.contains(value.getClass())) {</span>
+            // Return as is
+<span class="fc" id="L342">            return value;</span>
+<span class="fc bfc" id="L343" title="All 2 branches covered.">        } else if (value instanceof Bson) {</span>
+<span class="fc" id="L344">            return serializeFields(objectMapper, (Bson) value, registry);</span>
+<span class="fc bfc" id="L345" title="All 2 branches covered.">        } else if (value instanceof Collection) {</span>
+<span class="fc" id="L346">            Collection&lt;?&gt; coll = (Collection&lt;?&gt;) value;</span>
+<span class="fc" id="L347">            List&lt;Object&gt; copy = null;</span>
+<span class="fc" id="L348">            int position = 0;</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">            for (Object item : coll) {</span>
+<span class="fc" id="L350">                Object returned = serializeField(objectMapper, item, registry);</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">                if (returned != item) {</span>
+<span class="pc bpc" id="L352" title="1 of 2 branches missed.">                    if (copy == null) {</span>
+<span class="fc" id="L353">                        copy = new ArrayList&lt;&gt;(coll);</span>
+                    }
+<span class="fc" id="L355">                    copy.set(position, returned);</span>
+                }
+<span class="fc" id="L357">                position++;</span>
+<span class="fc" id="L358">            }</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">            if (copy != null) {</span>
+<span class="fc" id="L360">                return copy;</span>
+            } else {
+<span class="fc" id="L362">                return coll;</span>
+            }
+<span class="pc bpc" id="L364" title="1 of 2 branches missed.">        } else if (value.getClass().isArray()) {</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">            if (BASIC_TYPES.contains(value.getClass().getComponentType())) {</span>
+<span class="nc" id="L366">                return value;</span>
+            }
+<span class="nc" id="L368">            Object[] array = (Object[]) value;</span>
+<span class="nc" id="L369">            Object[] copy = null;</span>
+<span class="nc bnc" id="L370" title="All 2 branches missed.">            for (int i = 0; i &lt; array.length; i++) {</span>
+<span class="nc" id="L371">                Object returned = serializeField(objectMapper, array[i], registry);</span>
+<span class="nc bnc" id="L372" title="All 2 branches missed.">                if (returned != array[i]) {</span>
+<span class="nc bnc" id="L373" title="All 2 branches missed.">                    if (copy == null) {</span>
+<span class="nc" id="L374">                        copy = new Object[array.length];</span>
+<span class="nc" id="L375">                        System.arraycopy(array, 0, copy, 0, array.length);</span>
+                    }
+<span class="nc" id="L377">                    copy[i] = returned;</span>
+                }
+            }
+<span class="nc bnc" id="L380" title="All 2 branches missed.">            if (copy != null) {</span>
+<span class="nc" id="L381">                return copy;</span>
+            } else {
+<span class="nc" id="L383">                return array;</span>
+            }
+        } else {
+            // We don't know what it is, serialise it
+<span class="fc" id="L387">            BsonObjectGenerator generator = new BsonObjectGenerator();</span>
+            try {
+<span class="fc" id="L389">                objectMapper.writeValue(generator, value);</span>
+<span class="nc" id="L390">            } catch (JsonMappingException e) {</span>
+<span class="nc" id="L391">                throw new MongoJsonMappingException(e);</span>
+<span class="nc" id="L392">            } catch (IOException e) {</span>
+<span class="nc" id="L393">                throw new RuntimeException(</span>
+                    &quot;Somehow got an IOException writing to memory&quot;, e);
+<span class="fc" id="L395">            }</span>
+<span class="fc" id="L396">            return generator.getValue();</span>
+        }
+    }
+
+    public static Bson serializeDBUpdate(
+        Map&lt;String, Map&lt;String, UpdateOperationValue&gt;&gt; update,
+        ObjectMapper objectMapper, JavaType javaType, CodecRegistry registry
+    ) {
+<span class="fc" id="L404">        SerializerProvider serializerProvider = JacksonAccessor</span>
+<span class="fc" id="L405">            .getSerializerProvider(objectMapper);</span>
+<span class="fc" id="L406">        Document dbObject = new Document();</span>
+
+<span class="fc" id="L408">        JsonSerializer&lt;?&gt; serializer = null;</span>
+
+<span class="fc bfc" id="L410" title="All 2 branches covered.">        for (Map.Entry&lt;String, Map&lt;String, UpdateOperationValue&gt;&gt; op : update</span>
+<span class="fc" id="L411">            .entrySet()) {</span>
+<span class="fc" id="L412">            Document opObject = new Document();</span>
+<span class="fc bfc" id="L413" title="All 2 branches covered.">            for (Map.Entry&lt;String, UpdateOperationValue&gt; field : op.getValue()</span>
+<span class="fc" id="L414">                .entrySet()) {</span>
+                Object value;
+<span class="fc bfc" id="L416" title="All 2 branches covered.">                if (field.getValue().requiresSerialization()) {</span>
+
+<span class="fc bfc" id="L418" title="All 2 branches covered.">                    if (serializer == null) {</span>
+<span class="fc" id="L419">                        serializer = JacksonAccessor.findValueSerializer(</span>
+                            serializerProvider, javaType);
+                    }
+
+<span class="fc" id="L423">                    JsonSerializer&lt;?&gt; fieldSerializer = findUpdateSerializer(field</span>
+<span class="fc" id="L424">                            .getValue().isTargetCollection(), field.getKey(),</span>
+                        serializerProvider, serializer
+                    );
+<span class="fc bfc" id="L427" title="All 2 branches covered.">                    if (fieldSerializer != null) {</span>
+<span class="fc" id="L428">                        value = serializeUpdateField(field.getValue(),</span>
+                            fieldSerializer, serializerProvider,
+<span class="fc" id="L430">                            op.getKey(), field.getKey()</span>
+                        );
+                    } else {
+                        // Try default serializers
+<span class="fc" id="L434">                        value = serializeField(objectMapper, field.getValue()</span>
+<span class="fc" id="L435">                            .getValue(), registry);</span>
+                    }
+<span class="fc" id="L437">                } else {</span>
+<span class="fc" id="L438">                    value = field.getValue().getValue();</span>
+                }
+<span class="fc bfc" id="L440" title="All 4 branches covered.">                if ((op.getKey().equals(&quot;$addToSet&quot;) || op.getKey().equals(&quot;$push&quot;))</span>
+<span class="fc bfc" id="L441" title="All 2 branches covered.">                    &amp;&amp; field.getValue() instanceof MultiUpdateOperationValue) {</span>
+                    // Add to set needs $each for multi values
+                    // Same for $push with MultiUpdateOperation
+<span class="fc" id="L444">                    opObject.put(field.getKey(), new Document(</span>
+                        &quot;$each&quot;,
+                        value
+                    ));
+                } else {
+<span class="fc" id="L449">                    opObject.put(field.getKey(), value);</span>
+                }
+<span class="fc" id="L451">            }</span>
+<span class="fc" id="L452">            dbObject.append(op.getKey(), opObject);</span>
+<span class="fc" id="L453">        }</span>
+<span class="fc" id="L454">        return dbObject;</span>
+    }
+
+    private static Object serializeUpdateField(
+        UpdateOperationValue value,
+        JsonSerializer&lt;?&gt; serializer, SerializerProvider serializerProvider,
+        String op, String field
+    ) {
+<span class="pc bpc" id="L462" title="1 of 2 branches missed.">        if (value instanceof MultiUpdateOperationValue) {</span>
+<span class="nc" id="L463">            List&lt;Object&gt; results = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L464" title="All 2 branches missed.">            for (Object item : ((MultiUpdateOperationValue) value).getValues()) {</span>
+<span class="nc" id="L465">                results.add(serializeUpdateField(item, serializer,</span>
+                    serializerProvider, op, field
+                ));
+<span class="nc" id="L468">            }</span>
+<span class="nc" id="L469">            return results;</span>
+        } else {
+<span class="fc" id="L471">            return serializeUpdateField(value.getValue(), serializer,</span>
+                serializerProvider, op, field
+            );
+        }
+    }
+
+    private static Object serializeUpdateField(
+        Object value,
+        JsonSerializer serializer, SerializerProvider serializerProvider,
+        String op, String field
+    ) {
+<span class="fc" id="L482">        BsonObjectGenerator objectGenerator = new BsonObjectGenerator();</span>
+        try {
+<span class="fc" id="L484">            serializer.serialize(value, objectGenerator, serializerProvider);</span>
+<span class="nc" id="L485">        } catch (IOException e) {</span>
+<span class="nc" id="L486">            throw new MongoJsonMappingException(</span>
+                &quot;Error serializing value in DBUpdate operation &quot; + op
+                    + &quot; field &quot; + field, e);
+<span class="fc" id="L489">        }</span>
+<span class="fc" id="L490">        return objectGenerator.getValue();</span>
+    }
+
+    private static JsonSerializer&lt;?&gt; findUpdateSerializer(
+        boolean targetIsCollection, String fieldPath,
+        SerializerProvider serializerProvider, JsonSerializer&lt;?&gt; serializer
+    ) {
+<span class="pc bpc" id="L497" title="1 of 2 branches missed.">        if (serializer instanceof BeanSerializerBase) {</span>
+<span class="fc" id="L498">            JsonSerializer&lt;?&gt; fieldSerializer = serializer;</span>
+            // Iterate through the components of the field name
+<span class="fc" id="L500">            String[] fields = fieldPath.split(&quot;\\.&quot;);</span>
+<span class="fc bfc" id="L501" title="All 2 branches covered.">            for (String field : fields) {</span>
+<span class="pc bpc" id="L502" title="1 of 2 branches missed.">                if (fieldSerializer == null) {</span>
+                    // We don't have a field serializer to look up the field on,
+                    // so give up
+<span class="nc" id="L505">                    return null;</span>
+                }
+<span class="pc bpc" id="L507" title="1 of 4 branches missed.">                if (field.equals(&quot;$&quot;) || field.matches(&quot;\\d+&quot;)) {</span>
+                    // The current serializer must be a collection
+<span class="pc bpc" id="L509" title="1 of 2 branches missed.">                    if (fieldSerializer instanceof ContainerSerializer) {</span>
+<span class="fc" id="L510">                        JsonSerializer&lt;?&gt; contentSerializer = ((ContainerSerializer) fieldSerializer)</span>
+<span class="fc" id="L511">                            .getContentSerializer();</span>
+<span class="pc bpc" id="L512" title="1 of 2 branches missed.">                        if (contentSerializer == null) {</span>
+                            // Work it out
+<span class="fc" id="L514">                            JavaType contentType = ((ContainerSerializer) fieldSerializer)</span>
+<span class="fc" id="L515">                                .getContentType();</span>
+<span class="pc bpc" id="L516" title="1 of 2 branches missed.">                            if (contentType != null) {</span>
+<span class="fc" id="L517">                                contentSerializer = JacksonAccessor</span>
+<span class="fc" id="L518">                                    .findValueSerializer(</span>
+                                        serializerProvider, contentType);
+                            }
+                        }
+<span class="fc" id="L522">                        fieldSerializer = contentSerializer;</span>
+<span class="fc" id="L523">                    } else {</span>
+                        // Give up, don't attempt to serialise it
+<span class="nc" id="L525">                        return null;</span>
+                    }
+<span class="pc bpc" id="L527" title="1 of 2 branches missed.">                } else if (fieldSerializer instanceof BeanSerializerBase) {</span>
+<span class="fc" id="L528">                    BeanPropertyWriter writer = JacksonAccessor</span>
+<span class="fc" id="L529">                        .findPropertyWriter(</span>
+                            (BeanSerializerBase) fieldSerializer, field);
+<span class="pc bpc" id="L531" title="1 of 2 branches missed.">                    if (writer != null) {</span>
+<span class="fc" id="L532">                        fieldSerializer = writer.getSerializer();</span>
+<span class="fc bfc" id="L533" title="All 2 branches covered.">                        if (fieldSerializer == null) {</span>
+                            // Do a generic lookup
+<span class="fc" id="L535">                            fieldSerializer = JacksonAccessor</span>
+<span class="fc" id="L536">                                .findValueSerializer(</span>
+                                    serializerProvider,
+<span class="fc" id="L538">                                    writer.getType()</span>
+                                );
+                        }
+                    } else {
+                        // Give up
+<span class="nc" id="L543">                        return null;</span>
+                    }
+<span class="pc bnc" id="L545" title="All 2 branches missed.">                } else if (fieldSerializer instanceof MapSerializer) {</span>
+<span class="nc" id="L546">                    fieldSerializer = ((MapSerializer) fieldSerializer)</span>
+<span class="nc" id="L547">                        .getContentSerializer();</span>
+                } else {
+                    // Don't know how to find what the serialiser for this field
+                    // is
+<span class="nc" id="L551">                    return null;</span>
+                }
+            }
+            // Now we have a serializer for the field, see if we're supposed to
+            // be serialising for a collection
+<span class="fc bfc" id="L556" title="All 2 branches covered.">            if (targetIsCollection) {</span>
+<span class="fc bfc" id="L557" title="All 2 branches covered.">                if (fieldSerializer instanceof ContainerSerializer) {</span>
+<span class="fc" id="L558">                    fieldSerializer = ((ContainerSerializer) fieldSerializer)</span>
+<span class="fc" id="L559">                        .getContentSerializer();</span>
+<span class="fc bfc" id="L560" title="All 2 branches covered.">                } else if (fieldSerializer instanceof ObjectIdSerializer) {</span>
+                    // Special case for ObjectIdSerializer, leave as is, the
+                    // ObjectIdSerializer handles both single
+                    // values as well as collections with no problems.
+                } else {
+                    // Give up
+<span class="fc" id="L566">                    return null;</span>
+                }
+            }
+<span class="fc" id="L569">            return fieldSerializer;</span>
+        } else {
+<span class="nc" id="L571">            return null;</span>
+        }
+    }
+
+    private static JsonSerializer&lt;?&gt; findQuerySerializer(
+        boolean targetIsCollection, String fieldPath,
+        SerializerProvider serializerProvider, JsonSerializer&lt;?&gt; serializer
+    ) {
+<span class="pc bpc" id="L579" title="1 of 4 branches missed.">        if (serializer instanceof BeanSerializerBase</span>
+            || serializer instanceof MapSerializer) {
+<span class="fc" id="L581">            JsonSerializer&lt;?&gt; fieldSerializer = serializer;</span>
+            // Iterate through the components of the field name
+<span class="fc" id="L583">            String[] fields = fieldPath.split(&quot;\\.&quot;);</span>
+<span class="fc bfc" id="L584" title="All 2 branches covered.">            for (String field : fields) {</span>
+<span class="pc bpc" id="L585" title="1 of 2 branches missed.">                if (fieldSerializer == null) {</span>
+                    // We don't have a field serializer to look up the field on,
+                    // so give up
+<span class="nc" id="L588">                    return null;</span>
+                }
+
+<span class="fc" id="L591">                boolean isIndex = field.matches(&quot;\\d+&quot;);</span>
+
+                // First step into the collection if there is one
+<span class="pc bpc" id="L594" title="1 of 2 branches missed.">                if (!isIndex) {</span>
+<span class="fc bfc" id="L595" title="All 2 branches covered.">                    while (fieldSerializer instanceof ContainerSerializer) {</span>
+<span class="fc" id="L596">                        JsonSerializer&lt;?&gt; contentSerializer = ((ContainerSerializer) fieldSerializer)</span>
+<span class="fc" id="L597">                            .getContentSerializer();</span>
+<span class="pc bpc" id="L598" title="1 of 2 branches missed.">                        if (contentSerializer == null) {</span>
+                            // Work it out
+<span class="fc" id="L600">                            JavaType contentType = ((ContainerSerializer) fieldSerializer)</span>
+<span class="fc" id="L601">                                .getContentType();</span>
+<span class="pc bpc" id="L602" title="1 of 2 branches missed.">                            if (contentType != null) {</span>
+<span class="fc" id="L603">                                contentSerializer = JacksonAccessor</span>
+<span class="fc" id="L604">                                    .findValueSerializer(</span>
+                                        serializerProvider, contentType);
+                            }
+                        }
+<span class="fc" id="L608">                        fieldSerializer = contentSerializer;</span>
+<span class="fc" id="L609">                    }</span>
+                }
+
+<span class="pc bpc" id="L612" title="1 of 2 branches missed.">                if (isIndex) {</span>
+<span class="nc bnc" id="L613" title="All 2 branches missed.">                    if (fieldSerializer instanceof ContainerSerializer) {</span>
+<span class="nc" id="L614">                        JsonSerializer&lt;?&gt; contentSerializer = ((ContainerSerializer) fieldSerializer)</span>
+<span class="nc" id="L615">                            .getContentSerializer();</span>
+<span class="nc bnc" id="L616" title="All 2 branches missed.">                        if (contentSerializer == null) {</span>
+                            // Work it out
+<span class="nc" id="L618">                            JavaType contentType = ((ContainerSerializer) fieldSerializer)</span>
+<span class="nc" id="L619">                                .getContentType();</span>
+<span class="nc bnc" id="L620" title="All 2 branches missed.">                            if (contentType != null) {</span>
+<span class="nc" id="L621">                                contentSerializer = JacksonAccessor</span>
+<span class="nc" id="L622">                                    .findValueSerializer(</span>
+                                        serializerProvider, contentType);
+                            }
+                        }
+<span class="nc" id="L626">                        fieldSerializer = contentSerializer;</span>
+<span class="nc" id="L627">                    } else {</span>
+                        // Give up, don't attempt to serialise it
+<span class="nc" id="L629">                        return null;</span>
+                    }
+<span class="pc bpc" id="L631" title="1 of 2 branches missed.">                } else if (fieldSerializer instanceof BeanSerializerBase) {</span>
+<span class="fc" id="L632">                    BeanPropertyWriter writer = JacksonAccessor</span>
+<span class="fc" id="L633">                        .findPropertyWriter(</span>
+                            (BeanSerializerBase) fieldSerializer, field);
+<span class="fc bfc" id="L635" title="All 2 branches covered.">                    if (writer != null) {</span>
+<span class="fc" id="L636">                        fieldSerializer = writer.getSerializer();</span>
+<span class="fc bfc" id="L637" title="All 2 branches covered.">                        if (fieldSerializer == null) {</span>
+                            // Do a generic lookup
+<span class="fc" id="L639">                            fieldSerializer = JacksonAccessor</span>
+<span class="fc" id="L640">                                .findValueSerializer(</span>
+                                    serializerProvider,
+<span class="fc" id="L642">                                    writer.getType()</span>
+                                );
+                        }
+                    } else {
+                        // Give up
+<span class="fc" id="L647">                        return null;</span>
+                    }
+<span class="pc bnc" id="L649" title="All 2 branches missed.">                } else if (fieldSerializer instanceof MapSerializer) {</span>
+<span class="nc" id="L650">                    fieldSerializer = ((MapSerializer) fieldSerializer)</span>
+<span class="nc" id="L651">                        .getContentSerializer();</span>
+                } else {
+                    // Don't know how to find what the serialiser for this field
+                    // is
+<span class="nc" id="L655">                    return null;</span>
+                }
+            }
+            // Now we have a serializer for the field, see if we're supposed to
+            // be serialising for a collection
+<span class="fc bfc" id="L660" title="All 2 branches covered.">            if (targetIsCollection) {</span>
+<span class="fc bfc" id="L661" title="All 2 branches covered.">                if (fieldSerializer instanceof ContainerSerializer) {</span>
+<span class="fc" id="L662">                    fieldSerializer = ((ContainerSerializer) fieldSerializer)</span>
+<span class="fc" id="L663">                        .getContentSerializer();</span>
+<span class="fc bfc" id="L664" title="All 2 branches covered.">                } else if (fieldSerializer instanceof ObjectIdSerializer) {</span>
+                    // Special case for ObjectIdSerializer, leave as is, the
+                    // ObjectIdSerializer handles both single
+                    // values as well as collections with no problems.
+                } else {
+                    // Give up
+<span class="fc" id="L670">                    return null;</span>
+                }
+            }
+<span class="fc" id="L673">            return fieldSerializer;</span>
+        } else {
+<span class="fc" id="L675">            return null;</span>
+        }
+    }
+
+    public static List&lt;Bson&gt; serializePipeline(ObjectMapper objectMapper, JavaType type, Pipeline&lt;?&gt; pipeline) {
+<span class="nc" id="L680">        SerializerProvider serializerProvider = JacksonAccessor</span>
+<span class="nc" id="L681">            .getSerializerProvider(objectMapper);</span>
+<span class="nc" id="L682">        JsonSerializer&lt;?&gt; serializer = JacksonAccessor.findValueSerializer(</span>
+            serializerProvider, type);
+<span class="nc" id="L684">        List&lt;Bson&gt; serializedPipeline = new ArrayList&lt;&gt;();</span>
+<span class="nc bnc" id="L685" title="All 2 branches missed.">        for (Aggregation.Stage&lt;?&gt; stage : pipeline.stages()) {</span>
+<span class="nc" id="L686">            serializedPipeline.add(serializePipelineStage(serializerProvider, serializer, stage));</span>
+<span class="nc" id="L687">        }</span>
+<span class="nc" id="L688">        return serializedPipeline;</span>
+    }
+
+    public static Bson serializePipelineStage(ObjectMapper objectMapper, JavaType type, Aggregation.Stage&lt;?&gt; stage) {
+<span class="fc" id="L692">        SerializerProvider serializerProvider = JacksonAccessor</span>
+<span class="fc" id="L693">            .getSerializerProvider(objectMapper);</span>
+<span class="fc" id="L694">        JsonSerializer&lt;?&gt; serializer = JacksonAccessor.findValueSerializer(</span>
+            serializerProvider, type);
+<span class="fc" id="L696">        return serializePipelineStage(serializerProvider, serializer, stage);</span>
+    }
+
+    private static Bson serializePipelineStage(
+        SerializerProvider serializerProvider, JsonSerializer&lt;?&gt; serializer,
+        Aggregation.Stage&lt;?&gt; stage
+    ) {
+<span class="fc bfc" id="L703" title="All 2 branches covered.">        if (stage instanceof Aggregation.Limit) {</span>
+<span class="fc" id="L704">            return new Document(&quot;$limit&quot;, ((Aggregation.Limit) stage).limit());</span>
+        }
+<span class="pc bpc" id="L706" title="1 of 2 branches missed.">        if (stage instanceof Aggregation.Skip) {</span>
+<span class="nc" id="L707">            return new Document(&quot;$skip&quot;, ((Aggregation.Skip) stage).skip());</span>
+        }
+<span class="fc bfc" id="L709" title="All 2 branches covered.">        if (stage instanceof Aggregation.Sort) {</span>
+<span class="fc" id="L710">            return new Document(&quot;$sort&quot;, ((Aggregation.Sort) stage).builder());</span>
+        }
+<span class="fc bfc" id="L712" title="All 2 branches covered.">        if (stage instanceof Aggregation.Unwind) {</span>
+<span class="fc" id="L713">            return new Document(&quot;$unwind&quot;, ((Object) ((Aggregation.Unwind) stage).path()).toString());</span>
+        }
+<span class="fc bfc" id="L715" title="All 2 branches covered.">        if (stage instanceof Aggregation.Match) {</span>
+<span class="fc" id="L716">            return new Document(&quot;$match&quot;, serializeQuery(serializerProvider, serializer,</span>
+<span class="fc" id="L717">                ((Aggregation.Match) stage).query()</span>
+            ));
+        }
+<span class="fc bfc" id="L720" title="All 2 branches covered.">        if (stage instanceof Aggregation.Project) {</span>
+<span class="fc" id="L721">            ProjectionBuilder builder = ((Aggregation.Project) stage).builder();</span>
+<span class="fc" id="L722">            Document object = new Document();</span>
+<span class="fc bfc" id="L723" title="All 2 branches covered.">            for (Entry&lt;String, Object&gt; entry : builder.entrySet()) {</span>
+<span class="fc bfc" id="L724" title="All 2 branches covered.">                if (entry.getValue() instanceof Expression&lt;?&gt;) {</span>
+<span class="fc" id="L725">                    object.append(</span>
+<span class="fc" id="L726">                        entry.getKey(),</span>
+<span class="fc" id="L727">                        serializeExpression(serializerProvider, serializer, (Expression&lt;?&gt;) entry.getValue())</span>
+                    );
+                } else {
+<span class="fc" id="L730">                    object.append(entry.getKey(), entry.getValue());</span>
+                }
+<span class="fc" id="L732">            }</span>
+<span class="fc" id="L733">            return new Document(&quot;$project&quot;, object);</span>
+        }
+<span class="fc bfc" id="L735" title="All 2 branches covered.">        if (stage instanceof Aggregation.Group) {</span>
+<span class="fc" id="L736">            Aggregation.Group group = (Aggregation.Group) stage;</span>
+<span class="fc" id="L737">            Document object = new Document(&quot;_id&quot;, serializeExpression(serializerProvider, serializer, group.key()));</span>
+<span class="fc bfc" id="L738" title="All 2 branches covered.">            for (Map.Entry&lt;String, Aggregation.Group.Accumulator&gt; field : group.calculatedFields()) {</span>
+<span class="fc" id="L739">                object.append(field.getKey(), serializeAccumulator(serializerProvider, serializer, field.getValue()));</span>
+<span class="fc" id="L740">            }</span>
+<span class="fc" id="L741">            return new Document(&quot;$group&quot;, object);</span>
+        }
+<span class="pc bpc" id="L743" title="1 of 2 branches missed.">        if (stage instanceof Aggregation.Out) {</span>
+<span class="fc" id="L744">            return new Document(&quot;$out&quot;, ((Object) ((Aggregation.Out) stage).collectionName()));</span>
+        }
+<span class="nc" id="L746">        throw new IllegalArgumentException(stage.getClass().getName());</span>
+    }
+
+    private static Bson serializeAccumulator(SerializerProvider serializerProvider, JsonSerializer&lt;?&gt; serializer, Accumulator accumulator) {
+<span class="fc" id="L750">        return new Document(</span>
+<span class="fc" id="L751">            accumulator.operator.name(),</span>
+<span class="fc" id="L752">            serializeExpression(serializerProvider, serializer, accumulator.expression)</span>
+        );
+    }
+
+    private static Object serializeExpression(SerializerProvider serializerProvider, JsonSerializer&lt;?&gt; serializer, Expression&lt;?&gt; expression) {
+<span class="fc bfc" id="L757" title="All 2 branches covered.">        if (expression instanceof Aggregation.FieldPath) {</span>
+<span class="fc" id="L758">            return ((Aggregation.FieldPath) expression).toString();</span>
+        }
+<span class="fc bfc" id="L760" title="All 2 branches covered.">        if (expression instanceof Aggregation.Literal&lt;?&gt;) {</span>
+<span class="fc" id="L761">            return new Document(&quot;$literal&quot;, ((Aggregation.Literal&lt;?&gt;) expression).value());</span>
+        }
+<span class="pc bpc" id="L763" title="1 of 2 branches missed.">        if (expression instanceof Aggregation.ExpressionObject) {</span>
+<span class="nc" id="L764">            Document object = new Document();</span>
+<span class="nc bnc" id="L765" title="All 2 branches missed.">            for (Entry&lt;String, Expression&lt;?&gt;&gt; property : ((Aggregation.ExpressionObject) expression).properties()) {</span>
+<span class="nc" id="L766">                object.append(</span>
+<span class="nc" id="L767">                    property.getKey(),</span>
+<span class="nc" id="L768">                    serializeExpression(serializerProvider, serializer, property.getValue())</span>
+                );
+<span class="nc" id="L770">            }</span>
+<span class="nc" id="L771">            return object;</span>
+        }
+<span class="pc bpc" id="L773" title="1 of 2 branches missed.">        if (expression instanceof Aggregation.OperatorExpression) {</span>
+<span class="fc" id="L774">            Aggregation.OperatorExpression&lt;?&gt; oe = (Aggregation.OperatorExpression&lt;?&gt;) expression;</span>
+<span class="fc" id="L775">            List&lt;Object&gt; operands = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L776" title="All 2 branches covered.">            for (Expression&lt;?&gt; e : oe.operands()) {</span>
+<span class="fc" id="L777">                operands.add(serializeExpression(serializerProvider, serializer, e));</span>
+<span class="fc" id="L778">            }</span>
+<span class="fc" id="L779">            return new Document(oe.operator(), operands);</span>
+        }
+<span class="nc" id="L781">        throw new IllegalArgumentException(expression.getClass().getName());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

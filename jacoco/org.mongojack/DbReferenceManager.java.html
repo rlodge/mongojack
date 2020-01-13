@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DbReferenceManager.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack</a> &gt; <span class="el_source">DbReferenceManager.java</span></div><h1>DbReferenceManager.java</h1><pre class="source lang-java linenums">package org.mongojack;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoCollection;
+import org.bson.conversions.Bson;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+
+public class DbReferenceManager {
+
+<span class="fc" id="L18">    private final Map&lt;JacksonCollectionKey&lt;?&gt;, JacksonMongoCollection&lt;?&gt;&gt; referencedCollectionCache = new ConcurrentHashMap&lt;&gt;();</span>
+
+    private final MongoClient mongoClient;
+    private final ObjectMapper objectMapper;
+    private final String defaultDatabaseName;
+
+    public DbReferenceManager(
+        final MongoClient mongoClient,
+        final ObjectMapper objectMapper,
+        final String defaultDatabaseName
+<span class="fc" id="L28">    ) {</span>
+<span class="fc" id="L29">        this.mongoClient = mongoClient;</span>
+<span class="fc" id="L30">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L31">        this.defaultDatabaseName = defaultDatabaseName;</span>
+<span class="fc" id="L32">    }</span>
+
+    public DbReferenceManager(
+        final MongoClient mongoClient,
+        final String defaultDatabaseName
+    ) {
+<span class="fc" id="L38">        this(mongoClient, null, defaultDatabaseName);</span>
+<span class="fc" id="L39">    }</span>
+
+    /**
+     * Get a collection for loading a reference of the given type
+     *
+     * @param databaseName   Name of the DB that holds the collection
+     * @param collectionName The name of the collection
+     * @param valueClass     The type of the values in the collection
+     * @param &lt;CT&gt;           The type of the values in the collection
+     * @return The collection
+     */
+    @SuppressWarnings(&quot;unused&quot;)
+    public &lt;CT&gt; JacksonMongoCollection&lt;CT&gt; getReferenceCollection(
+        String databaseName, String collectionName, Class&lt;CT&gt; valueClass
+    ) {
+<span class="nc" id="L54">        return getReferenceCollection(new JacksonCollectionKey&lt;&gt;(databaseName, collectionName, valueClass));</span>
+    }
+
+    /**
+     * Get a collection for loading a reference of the given type
+     *
+     * @param collectionKey The key for the collection
+     * @param &lt;CT&gt;          The type of values in the collection
+     * @return The collection
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public &lt;CT&gt; JacksonMongoCollection&lt;CT&gt; getReferenceCollection(
+        JacksonCollectionKey&lt;CT&gt; collectionKey
+    ) {
+<span class="fc" id="L68">        return (JacksonMongoCollection&lt;CT&gt;) referencedCollectionCache.computeIfAbsent(</span>
+            collectionKey,
+            (k) -&gt; {
+<span class="fc" id="L71">                final String databaseName = Optional.ofNullable(k.getDatabaseName()).orElse(defaultDatabaseName);</span>
+<span class="fc" id="L72">                return JacksonMongoCollection.builder()</span>
+<span class="fc" id="L73">                    .withObjectMapper(objectMapper)</span>
+<span class="fc" id="L74">                    .build(</span>
+<span class="fc" id="L75">                        (MongoCollection&lt;CT&gt;) mongoClient.getDatabase(databaseName).getCollection(k.getCollectionName()).withDocumentClass(k.getValueType()),</span>
+<span class="fc" id="L76">                        (Class&lt;CT&gt;) k.getValueType()</span>
+                    );
+            }
+        );
+    }
+
+    /**
+     * Fetches the underlying value for a single DBRef.
+     *
+     * @param ref  The reference
+     * @param &lt;R&gt;  The type the  ref points to.
+     * @param &lt;RK&gt; The type of ID the ref points to
+     * @return A ref, or null if the underlying value is nto found
+     */
+    public &lt;R, RK&gt; R fetch(DBRef&lt;R, RK&gt; ref) {
+<span class="fc" id="L91">        return fetch(ref, null);</span>
+    }
+
+    /**
+     * Fetches the underlying value for a single DBRef.
+     *
+     * @param ref    The reference
+     * @param &lt;R&gt;    The type the  ref points to.
+     * @param &lt;RK&gt;   The type of ID the ref points to
+     * @param fields A Bson representing the projection to be used.
+     * @return A ref, or null if the underlying value is nto found
+     */
+    public &lt;R, RK&gt; R fetch(DBRef&lt;R, RK&gt; ref, Bson fields) {
+<span class="fc" id="L104">        final JacksonMongoCollection&lt;R&gt; collection = getReferenceCollection(ref.getCollectionKey());</span>
+<span class="fc" id="L105">        return collection.find(collection.createIdQuery(ref.getId())).projection(fields).first();</span>
+    }
+
+    /**
+     * Fetch a refs of dbrefs. This is more efficient than fetching one at
+     * a time.
+     *
+     * @param refs the refs to fetch
+     * @param &lt;R&gt;  The type of the reference
+     * @param &lt;RK&gt; The identifier type
+     * @return The refs of referenced objcets
+     */
+    public &lt;R, RK&gt; List&lt;R&gt; fetch(
+        Collection&lt;DBRef&lt;R, RK&gt;&gt; refs
+    ) {
+<span class="fc" id="L120">        return fetch(refs, null);</span>
+    }
+
+    /**
+     * Fetch a refs of dbrefs. This is more efficient than fetching one at
+     * a time.
+     *
+     * @param refs   the refs to fetch
+     * @param fields The fields to retrieve for each of the documents
+     * @param &lt;R&gt;    The type of the reference
+     * @param &lt;RK&gt;   The identifier type
+     * @return The refs of referenced objects
+     */
+    @SuppressWarnings(&quot;unchecked&quot;)
+    public &lt;R, RK&gt; List&lt;R&gt; fetch(
+        Collection&lt;org.mongojack.DBRef&lt;R, RK&gt;&gt; refs,
+        Bson fields
+    ) {
+<span class="fc" id="L138">        final Map&lt;JacksonCollectionKey&lt;?&gt;, List&lt;RK&gt;&gt; groupedIdentifiers = refs.stream()</span>
+<span class="fc" id="L139">            .collect(Collectors.groupingBy(org.mongojack.DBRef::getCollectionKey, Collectors.mapping(DBRef::getId, Collectors.toList())));</span>
+
+<span class="fc" id="L141">        return (List&lt;R&gt;) groupedIdentifiers.entrySet().stream()</span>
+<span class="fc" id="L142">            .map((entry) -&gt; {</span>
+<span class="fc" id="L143">                final JacksonMongoCollection&lt;?&gt; collection = getReferenceCollection(entry.getKey());</span>
+<span class="fc" id="L144">                return collection.find(collection.createIdInQuery(entry.getValue())).projection(fields).into(new ArrayList&lt;&gt;());</span>
+            })
+<span class="fc" id="L146">            .flatMap(List::stream)</span>
+<span class="fc" id="L147">            .collect(Collectors.toList());</span>
+    }
+
+    /**
+     * Register a collection so that it will be used (as opposed to an internally built one) when retrieving references.
+     *
+     * @param collection The collection to register
+     */
+    @SuppressWarnings(&quot;unused&quot;)
+    public void registerCollection(JacksonMongoCollection&lt;?&gt; collection) {
+<span class="nc" id="L157">        referencedCollectionCache.put(collection.getCollectionKey(), collection);</span>
+<span class="nc" id="L158">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

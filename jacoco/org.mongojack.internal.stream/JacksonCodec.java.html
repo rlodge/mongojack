@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JacksonCodec.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal.stream</a> &gt; <span class="el_source">JacksonCodec.java</span></div><h1>JacksonCodec.java</h1><pre class="source lang-java linenums">package org.mongojack.internal.stream;
+
+import org.bson.BsonDecimal128;
+import org.bson.BsonDouble;
+import org.bson.BsonInt32;
+import org.bson.BsonInt64;
+import org.bson.BsonNull;
+import org.bson.BsonObjectId;
+import org.bson.BsonReader;
+import org.bson.BsonString;
+import org.bson.BsonValue;
+import org.bson.BsonWriter;
+import org.bson.codecs.Codec;
+import org.bson.codecs.CollectibleCodec;
+import org.bson.codecs.DecoderContext;
+import org.bson.codecs.EncoderContext;
+import org.bson.types.Decimal128;
+import org.bson.types.ObjectId;
+
+import java.lang.reflect.AnnotatedElement;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.Optional;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+@SuppressWarnings(&quot;WeakerAccess&quot;)
+public class JacksonCodec&lt;T&gt; implements Codec&lt;T&gt;, CollectibleCodec&lt;T&gt; {
+
+    private final JacksonEncoder&lt;T&gt; encoder;
+    private final JacksonDecoder&lt;T&gt; decoder;
+
+<span class="fc" id="L34">    public JacksonCodec(JacksonEncoder&lt;T&gt; encoder, JacksonDecoder&lt;T&gt; decoder) {</span>
+<span class="fc" id="L35">        this.encoder = encoder;</span>
+<span class="fc" id="L36">        this.decoder = decoder;</span>
+<span class="fc" id="L37">    }</span>
+
+    @Override
+    public void encode(BsonWriter writer, T value, EncoderContext encoderContext) {
+<span class="fc" id="L41">        this.encoder.encode(writer, value, encoderContext);</span>
+<span class="fc" id="L42">    }</span>
+
+    @Override
+    public Class&lt;T&gt; getEncoderClass() {
+<span class="fc" id="L46">        return encoder.getEncoderClass();</span>
+    }
+
+    @Override
+    public T decode(BsonReader reader, DecoderContext decoderContext) {
+<span class="fc" id="L51">        return decoder.decode(reader, decoderContext);</span>
+    }
+
+    @Override
+    public T generateIdIfAbsentFromDocument(final T t) {
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (!documentHasId(t)) {</span>
+<span class="fc" id="L57">            getIdWriter(t).accept(new BsonObjectId());</span>
+        }
+<span class="fc" id="L59">        return t;</span>
+    }
+
+    @Override
+    public boolean documentHasId(final T t) {
+<span class="fc" id="L64">        final BsonValue readValue = getDocumentId(t);</span>
+<span class="pc bpc" id="L65" title="1 of 4 branches missed.">        return readValue != null &amp;&amp; !readValue.isNull();</span>
+    }
+
+    @Override
+    public BsonValue getDocumentId(final T t) {
+<span class="fc" id="L70">        return getIdReader(t).get();</span>
+    }
+
+    private Supplier&lt;BsonValue&gt; getIdReader(final T t) {
+<span class="fc" id="L74">        final Class&lt;?&gt; documentClass = t.getClass();</span>
+<span class="fc" id="L75">        final Optional&lt;Method&gt; maybeIdGetter = getIdGetter(documentClass);</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (maybeIdGetter.isPresent()) {</span>
+<span class="fc" id="L77">            Method getter = maybeIdGetter.get();</span>
+<span class="fc" id="L78">            getter.setAccessible(true);</span>
+<span class="fc" id="L79">            return () -&gt; {</span>
+                try {
+<span class="fc" id="L81">                    return constructIdValue(getter.invoke(t), maybeIdGetter);</span>
+<span class="nc" id="L82">                } catch (Exception e) {</span>
+<span class="nc" id="L83">                    e.printStackTrace();</span>
+<span class="nc" id="L84">                    return BsonNull.VALUE;</span>
+                }
+            };
+        } else {
+<span class="fc" id="L88">            final Optional&lt;Field&gt; maybeField = getIdField(documentClass);</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">            if (maybeField.isPresent()) {</span>
+<span class="fc" id="L90">                Field field = maybeField.get();</span>
+<span class="fc" id="L91">                field.setAccessible(true);</span>
+<span class="fc" id="L92">                return () -&gt; {</span>
+                    try {
+<span class="fc" id="L94">                        return constructIdValue(field.get(t), maybeField);</span>
+<span class="nc" id="L95">                    } catch (Exception e) {</span>
+<span class="nc" id="L96">                        e.printStackTrace();</span>
+<span class="nc" id="L97">                        return BsonNull.VALUE;</span>
+                    }
+                };
+            } else {
+<span class="nc" id="L101">                return () -&gt; BsonNull.VALUE;</span>
+            }
+        }
+    }
+
+    private Consumer&lt;BsonObjectId&gt; getIdWriter(final T t) {
+<span class="fc" id="L107">        final Class&lt;?&gt; documentClass = t.getClass();</span>
+<span class="fc" id="L108">        final Optional&lt;Method&gt; maybeSetter = getIdSetter(documentClass);</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (maybeSetter.isPresent()) {</span>
+<span class="fc" id="L110">            Method setter = maybeSetter.get();</span>
+<span class="fc" id="L111">            setter.setAccessible(true);</span>
+<span class="fc" id="L112">            return (value) -&gt; {</span>
+                try {
+<span class="pc bpc" id="L114" title="1 of 2 branches missed.">                    if (value != null) {</span>
+<span class="fc" id="L115">                        setter.invoke(t, extractIdValue(value, setter.getParameterTypes()[0]));</span>
+                    }
+<span class="nc" id="L117">                } catch (Exception e) {</span>
+<span class="nc" id="L118">                    e.printStackTrace();</span>
+<span class="fc" id="L119">                }</span>
+<span class="fc" id="L120">            };</span>
+        } else {
+<span class="fc" id="L122">            final Optional&lt;Field&gt; maybeField = getIdField(documentClass);</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">            if (maybeField.isPresent()) {</span>
+<span class="fc" id="L124">                Field field = maybeField.get();</span>
+<span class="fc" id="L125">                field.setAccessible(true);</span>
+<span class="fc" id="L126">                return (value) -&gt; {</span>
+                    try {
+<span class="fc" id="L128">                        field.set(t, extractIdValue(value, field.getType()));</span>
+<span class="nc" id="L129">                    } catch (Exception e) {</span>
+<span class="nc" id="L130">                        e.printStackTrace();</span>
+<span class="fc" id="L131">                    }</span>
+<span class="fc" id="L132">                };</span>
+            } else {
+<span class="nc" id="L134">                return (value) -&gt; {</span>
+<span class="nc" id="L135">                };</span>
+            }
+        }
+    }
+
+    private static Optional&lt;Field&gt; getIdField(final Class&lt;?&gt; documentClass) {
+<span class="fc" id="L141">        Field[] fields = documentClass.getDeclaredFields();</span>
+<span class="fc" id="L142">        Optional&lt;Field&gt; maybeField = Arrays.stream(fields)</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">            .filter(field -&gt; field.isAnnotationPresent(javax.persistence.Id.class) ||</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                field.isAnnotationPresent(org.mongojack.Id.class) ||</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">                field.getName().equals(&quot;_id&quot;))</span>
+<span class="fc" id="L146">            .findFirst();</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">        if (maybeField.isPresent()) {</span>
+<span class="fc" id="L148">            return maybeField;</span>
+        }
+
+<span class="nc" id="L151">        Class&lt;?&gt; superClass = documentClass.getSuperclass();</span>
+<span class="nc bnc" id="L152" title="All 4 branches missed.">        if (superClass != null &amp;&amp; !Object.class.equals(superClass)) {</span>
+<span class="nc" id="L153">            return getIdField(superClass);</span>
+        }
+<span class="nc" id="L155">        return Optional.empty();</span>
+    }
+
+    private static Optional&lt;Method&gt; getIdGetter(final Class&lt;?&gt; documentClass) {
+<span class="fc" id="L159">        Method[] methods = documentClass.getDeclaredMethods();</span>
+<span class="fc" id="L160">        Optional&lt;Method&gt; maybeGetter = Arrays.stream(methods)</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            .filter(method -&gt; method.getName().startsWith(&quot;get&quot;) &amp;&amp;</span>
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">                method.getParameterCount() == 0 &amp;&amp;</span>
+<span class="pc bpc" id="L163" title="1 of 2 branches missed.">                (method.isAnnotationPresent(javax.persistence.Id.class) ||</span>
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">                    method.isAnnotationPresent(org.mongojack.Id.class) ||</span>
+<span class="pc bnc" id="L165" title="All 2 branches missed.">                    method.getName().equals(&quot;get_id&quot;)))</span>
+<span class="fc" id="L166">            .findFirst();</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        if (maybeGetter.isPresent()) {</span>
+<span class="fc" id="L168">            return maybeGetter;</span>
+        }
+
+<span class="fc" id="L171">        Class&lt;?&gt; superClass = documentClass.getSuperclass();</span>
+<span class="pc bpc" id="L172" title="2 of 4 branches missed.">        if (superClass != null &amp;&amp; !Object.class.equals(superClass)) {</span>
+<span class="nc" id="L173">            return getIdGetter(superClass);</span>
+        }
+<span class="fc" id="L175">        return Optional.empty();</span>
+    }
+
+    private static Optional&lt;Method&gt; getIdSetter(final Class&lt;?&gt; documentClass) {
+<span class="fc" id="L179">        Method[] methods = documentClass.getDeclaredMethods();</span>
+<span class="fc" id="L180">        Optional&lt;Method&gt; maybeSetter = Arrays.stream(methods)</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">            .filter(method -&gt; method.getName().startsWith(&quot;set&quot;) &amp;&amp;</span>
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">                method.getParameterCount() == 1 &amp;&amp;</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">                (method.isAnnotationPresent(javax.persistence.Id.class) ||</span>
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">                    method.isAnnotationPresent(org.mongojack.Id.class) ||</span>
+<span class="pc bnc" id="L185" title="All 2 branches missed.">                    method.getName().equals(&quot;set_id&quot;)))</span>
+<span class="fc" id="L186">            .findFirst();</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        if (maybeSetter.isPresent()) {</span>
+<span class="fc" id="L188">            return maybeSetter;</span>
+        }
+
+<span class="fc" id="L191">        Class&lt;?&gt; superClass = documentClass.getSuperclass();</span>
+<span class="pc bpc" id="L192" title="2 of 4 branches missed.">        if (superClass != null &amp;&amp; !Object.class.equals(superClass)) {</span>
+<span class="nc" id="L193">            return getIdSetter(superClass);</span>
+        }
+<span class="fc" id="L195">        return Optional.empty();</span>
+    }
+
+    /**
+     * This is only used for GENERATING an object id, and since we are only interested in auto-generating ObjectIds, then we only have to
+     * deal with object ids here.
+     *
+     * @param value
+     * @param valueType
+     * @return
+     */
+    private static Object extractIdValue(BsonObjectId value, Class&lt;?&gt; valueType) {
+<span class="fc bfc" id="L207" title="All 2 branches covered.">        if (String.class.equals(valueType)) {</span>
+<span class="fc" id="L208">            return value.asObjectId().getValue().toHexString();</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        } else if (ObjectId.class.equals(valueType)) {</span>
+<span class="fc" id="L210">            return value.asObjectId().getValue();</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">        } else if (byte[].class.equals(valueType)) {</span>
+<span class="fc" id="L212">            return value.asObjectId().getValue().toByteArray();</span>
+<span class="nc bnc" id="L213" title="All 2 branches missed.">        } else if (Byte[].class.equals(valueType)) {</span>
+<span class="nc" id="L214">            final byte[] inputArray = value.asObjectId().getValue().toByteArray();</span>
+<span class="nc" id="L215">            Byte[] outputArray = new Byte[inputArray.length];</span>
+<span class="nc bnc" id="L216" title="All 2 branches missed.">            for (int i = 0; i &lt; inputArray.length; i++) {</span>
+<span class="nc" id="L217">                outputArray[i] = inputArray[i];</span>
+            }
+<span class="nc" id="L219">            return outputArray;</span>
+        }
+<span class="nc" id="L221">        throw new IllegalArgumentException(&quot;Unsupported ID type: &quot; + value.getClass());</span>
+    }
+
+    @SuppressWarnings(&quot;OptionalUsedAsFieldOrParameterType&quot;)
+    public static BsonValue constructIdValue(Object value, Optional&lt;? extends AnnotatedElement&gt; element) {
+<span class="pc bpc" id="L226" title="1 of 4 branches missed.">        if (element.isPresent() &amp;&amp; element.get().isAnnotationPresent(org.mongojack.ObjectId.class)) {</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">            if (value instanceof String) {</span>
+<span class="fc" id="L228">                return new BsonObjectId(new ObjectId((String) value));</span>
+            }
+<span class="fc bfc" id="L230" title="All 2 branches covered.">            if (value instanceof byte[]) {</span>
+<span class="fc" id="L231">                return new BsonObjectId(new ObjectId((byte[]) value));</span>
+            }
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">            if (value instanceof Byte[]) {</span>
+<span class="nc" id="L234">                final Byte[] inputArray = (Byte[]) value;</span>
+<span class="nc" id="L235">                byte[] outputArray = new byte[inputArray.length];</span>
+<span class="nc bnc" id="L236" title="All 2 branches missed.">                for (int i = 0; i &lt; inputArray.length; i++) {</span>
+<span class="nc" id="L237">                    outputArray[i] = inputArray[i];</span>
+                }
+<span class="nc" id="L239">                return new BsonObjectId(new ObjectId(outputArray));</span>
+            }
+        }
+<span class="fc bfc" id="L242" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L243">            return BsonNull.VALUE;</span>
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">        } else if (value instanceof Double) {</span>
+<span class="nc" id="L245">            return new BsonDouble((Double) value);</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">        } else if (value instanceof String) {</span>
+<span class="fc" id="L247">            return new BsonString((String) value);</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">        } else if (value instanceof ObjectId) {</span>
+<span class="fc" id="L249">            return new BsonObjectId((ObjectId) value);</span>
+<span class="pc bpc" id="L250" title="1 of 2 branches missed.">        } else if (value instanceof Integer) {</span>
+<span class="fc" id="L251">            return new BsonInt32((Integer) value);</span>
+<span class="nc bnc" id="L252" title="All 2 branches missed.">        } else if (value instanceof Long) {</span>
+<span class="nc" id="L253">            return new BsonInt64((Long) value);</span>
+<span class="nc bnc" id="L254" title="All 2 branches missed.">        } else if (value instanceof Decimal128) {</span>
+<span class="nc" id="L255">            return new BsonDecimal128((Decimal128) value);</span>
+        }
+<span class="nc" id="L257">        throw new IllegalArgumentException(String.format(&quot;Unsupported ID type: %s&quot;, value.getClass()));</span>
+    }
+
+    public static Optional&lt;? extends AnnotatedElement&gt; getIdElement(final Class&lt;?&gt; documentClass) {
+<span class="fc" id="L261">        final Optional&lt;Method&gt; maybeIdGetter = getIdGetter(documentClass);</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">        if (maybeIdGetter.isPresent()) {</span>
+<span class="fc" id="L263">            return maybeIdGetter;</span>
+        }
+<span class="fc" id="L265">        return getIdField(documentClass);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

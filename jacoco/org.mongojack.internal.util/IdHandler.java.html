@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>IdHandler.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal.util</a> &gt; <span class="el_source">IdHandler.java</span></div><h1>IdHandler.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2011 VZ Netzwerke Ltd
+ * Copyright 2014 devbliss GmbH
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.mongojack.internal.util;
+
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mongodb.MongoException;
+import org.mongojack.internal.object.BsonObjectGenerator;
+import org.mongojack.internal.object.BsonObjectTraversingParser;
+
+import java.io.IOException;
+
+/**
+ * Handler for ids. Converts them between the objects type and the database type
+ *
+ * @author James Roper
+ * @since 1.0
+ */
+public interface IdHandler&lt;K, D&gt; {
+
+    /**
+     * Convert the given database id to the java objects id
+     *
+     * @param dbId The database id to convert from
+     * @return The converted id
+     */
+    K fromDbId(D dbId);
+
+    /**
+     * Convert the given java object id to the databases id
+     *
+     * @param id The java object id to convert from
+     * @return The converted database id
+     */
+    D toDbId(K id);
+
+<span class="nc" id="L52">    public static class NoopIdHandler&lt;K&gt; implements IdHandler&lt;K, K&gt; {</span>
+        @Override
+        public K fromDbId(K dbId) {
+<span class="nc" id="L55">            return dbId;</span>
+        }
+
+        @Override
+        public K toDbId(K id) {
+<span class="nc" id="L60">            return id;</span>
+        }
+    }
+
+    public static class JacksonIdHandler&lt;K, D&gt; implements IdHandler&lt;K, D&gt; {
+        private final JsonSerializer&lt;K&gt; jsonSerializer;
+        private final JsonDeserializer&lt;K&gt; jsonDeserializer;
+        private final ObjectMapper objectMapper;
+
+        public JacksonIdHandler(
+            JsonSerializer&lt;K&gt; jsonSerializer,
+            JsonDeserializer&lt;K&gt; jsonDeserializer, ObjectMapper objectMapper
+<span class="nc" id="L72">        ) {</span>
+<span class="nc" id="L73">            this.jsonSerializer = jsonSerializer;</span>
+<span class="nc" id="L74">            this.jsonDeserializer = jsonDeserializer;</span>
+<span class="nc" id="L75">            this.objectMapper = objectMapper;</span>
+<span class="nc" id="L76">        }</span>
+
+        /**
+         * Convert the given database id to the java objects id
+         *
+         * @param dbId The database id to convert from
+         * @return The converted id
+         */
+        @Override
+        public K fromDbId(D dbId) {
+            try {
+<span class="nc" id="L87">                return jsonDeserializer</span>
+<span class="nc" id="L88">                    .deserialize(new BsonObjectTraversingParser(</span>
+                        dbId,
+                        objectMapper
+                    ), null);
+<span class="nc" id="L92">            } catch (IOException e) {</span>
+<span class="nc" id="L93">                throw new MongoException(&quot;Error deserializing ID&quot;, e);</span>
+            }
+        }
+
+        /**
+         * Convert the given java object id to the databases id
+         *
+         * @param id The java object id to convert from
+         * @return The converted database id
+         */
+        @Override
+        public D toDbId(K id) {
+<span class="nc" id="L105">            BsonObjectGenerator generator = new BsonObjectGenerator();</span>
+            try {
+<span class="nc" id="L107">                jsonSerializer.serialize(id, generator, null);</span>
+<span class="nc" id="L108">            } catch (IOException e) {</span>
+<span class="nc" id="L109">                throw new MongoException(&quot;Error serializing ID&quot;, e);</span>
+<span class="nc" id="L110">            }</span>
+<span class="nc" id="L111">            return (D) generator.getValue();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

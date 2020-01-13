@@ -1,0 +1,669 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JacksonMongoCollection.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack</a> &gt; <span class="el_source">JacksonMongoCollection.java</span></div><h1>JacksonMongoCollection.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2011 VZ Netzwerke Ltd
+ * Copyright 2014 devbliss GmbH
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.mongojack;
+
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mongodb.MongoBulkWriteException;
+import com.mongodb.MongoException;
+import com.mongodb.MongoWriteConcernException;
+import com.mongodb.MongoWriteException;
+import com.mongodb.ReadConcern;
+import com.mongodb.ReadPreference;
+import com.mongodb.WriteConcern;
+import com.mongodb.client.DistinctIterable;
+import com.mongodb.client.FindIterable;
+import com.mongodb.client.MapReduceIterable;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.ReplaceOptions;
+import com.mongodb.client.result.DeleteResult;
+import com.mongodb.client.result.UpdateResult;
+import org.bson.BsonValue;
+import org.bson.Document;
+import org.bson.codecs.configuration.CodecRegistry;
+import org.bson.conversions.Bson;
+import org.mongojack.internal.MongoJackModule;
+import org.mongojack.internal.stream.JacksonCodec;
+import org.mongojack.internal.util.DistinctIterableDecorator;
+import org.mongojack.internal.util.DocumentSerializationUtils;
+import org.mongojack.internal.util.FindIterableDecorator;
+import org.mongojack.internal.util.MapReduceIterableDecorator;
+
+import java.lang.reflect.AnnotatedElement;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+
+/**
+ * A DBCollection that marshals/demarshals objects to/from Jackson annotated
+ * classes. It provides a very thin wrapper over an existing MongoCollection.
+ * &lt;p&gt;
+ * A JacksonMongoCollection is threadsafe, with a few caveats:
+ * &lt;p&gt;
+ * If you pass your own ObjectMapper to it, it is not thread safe to reconfigure
+ * that ObjectMapper at all after creating it. The setWritePreference and a few
+ * other methods on JacksonMongoCollection should not be called from multiple
+ * threads
+ * &lt;p&gt;
+ * Obtain an instance using JacksonMongoCollection.builder()...build()
+ * &lt;p&gt;
+ * Many of these methods accept queries or update documents in Bson format.  You can assemble
+ * the Bson any way you want, including using Document:
+ *
+ * &lt;pre&gt;
+ *     new Document(&quot;foo&quot;, new Document(&quot;$gt&quot;, 7))
+ * &lt;/pre&gt;
+ * &lt;p&gt;
+ * or using the mongo model builders for these objects:
+ *
+ * &lt;pre&gt;
+ *     Filters.eq(&quot;foo&quot;, 7))
+ *
+ *     Updates.inc(&quot;bar&quot;, 3)
+ * &lt;/pre&gt;
+ *
+ * @author James Roper
+ * @since 1.0
+ */
+@SuppressWarnings({&quot;UnusedReturnValue&quot;})
+public class JacksonMongoCollection&lt;TResult&gt; extends MongoCollectionDecorator&lt;TResult&gt; {
+
+<span class="fc" id="L92">    private static final AtomicReference&lt;ObjectMapper&gt; DEFAULT_OBJECT_MAPPER = new AtomicReference&lt;&gt;();</span>
+    private final ObjectMapper objectMapper;
+    private final JacksonCodecRegistry jacksonCodecRegistry;
+    @SuppressWarnings(&quot;FieldCanBeLocal&quot;)
+    private final Class&lt;?&gt; view;
+    private final Class&lt;TResult&gt; valueClass;
+    private final JavaType type;
+    private final com.mongodb.client.MongoCollection&lt;TResult&gt; mongoCollection;
+
+    /**
+     * Private.
+     */
+    private JacksonMongoCollection(
+        com.mongodb.client.MongoCollection&lt;TResult&gt; mongoCollection,
+        ObjectMapper objectMapper,
+        Class&lt;TResult&gt; valueClass,
+        Class&lt;?&gt; view
+<span class="fc" id="L109">    ) {</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        this.objectMapper = objectMapper != null ? objectMapper : getDefaultObjectMapper();</span>
+<span class="fc" id="L111">        this.view = view;</span>
+<span class="fc" id="L112">        jacksonCodecRegistry = new JacksonCodecRegistry(this.objectMapper, this.view);</span>
+<span class="fc" id="L113">        jacksonCodecRegistry.addCodecForClass(valueClass);</span>
+<span class="fc" id="L114">        this.mongoCollection = mongoCollection.withDocumentClass(valueClass).withCodecRegistry(jacksonCodecRegistry);</span>
+<span class="fc" id="L115">        this.valueClass = valueClass;</span>
+<span class="fc" id="L116">        this.type = this.objectMapper.constructType(valueClass);</span>
+<span class="fc" id="L117">    }</span>
+
+    /**
+     * Private.
+     */
+    private JacksonMongoCollection(
+        final ObjectMapper objectMapper,
+        final JacksonCodecRegistry jacksonCodecRegistry,
+        final Class&lt;?&gt; view,
+        final Class&lt;TResult&gt; valueClass,
+        final JavaType type,
+        final MongoCollection&lt;TResult&gt; mongoCollection
+<span class="fc" id="L129">    ) {</span>
+<span class="fc" id="L130">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L131">        this.jacksonCodecRegistry = jacksonCodecRegistry;</span>
+<span class="fc" id="L132">        this.view = view;</span>
+<span class="fc" id="L133">        this.valueClass = valueClass;</span>
+<span class="fc" id="L134">        this.type = type;</span>
+<span class="fc" id="L135">        this.mongoCollection = mongoCollection;</span>
+<span class="fc" id="L136">    }</span>
+
+    /**
+     * A utility to get the DEFAULT_OBJECT_MAPPER which sets it lazily, so it's never constructed if we don't use it.
+     *
+     * @return The default object mapper.
+     */
+    private static ObjectMapper getDefaultObjectMapper() {
+<span class="fc" id="L144">        return DEFAULT_OBJECT_MAPPER.updateAndGet((current) -&gt; {</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">            if (current == null) {</span>
+<span class="fc" id="L146">                return MongoJackModule.configure(new ObjectMapper());</span>
+            }
+<span class="fc" id="L148">            return current;</span>
+        });
+    }
+
+    /**
+     * Creates builder to build JacksonMongoCollection.
+     *
+     * @return created builder
+     */
+    public static JacksonMongoCollectionBuilder builder() {
+<span class="fc" id="L158">        return new JacksonMongoCollectionBuilder();</span>
+    }
+
+    /**
+     * Returns a single object from this collection.
+     *
+     * @return the object found, or &lt;code&gt;null&lt;/code&gt; if the collection is empty
+     * @throws MongoException If an error occurred
+     */
+    public TResult findOne() throws MongoException {
+<span class="fc" id="L168">        return findOne(new Document());</span>
+    }
+
+    /**
+     * Returns a single object from this collection matching the query.
+     *
+     * @param query the query object
+     * @return the object found, or &lt;code&gt;null&lt;/code&gt; if no such object exists
+     */
+    public TResult findOne(Bson query) {
+<span class="fc" id="L178">        return find(query).first();</span>
+    }
+
+    /**
+     * Returns a single object from this collection matching the query.
+     *
+     * @param query      the query object
+     * @param projection the projection
+     * @return the object found, or &lt;code&gt;null&lt;/code&gt; if no such object exists
+     */
+    public TResult findOne(Bson query, Bson projection) {
+<span class="fc" id="L189">        return find(query).projection(projection).first();</span>
+    }
+
+    /**
+     * Find an object by the given id
+     *
+     * @param id The id
+     * @return The object
+     * @throws MongoException If an error occurred
+     */
+    public TResult findOneById(Object id) throws MongoException {
+<span class="fc" id="L200">        return findOne(createIdQuery(id));</span>
+    }
+
+    /**
+     * Creates a document query object for the _id field using the object as the _id. This object is expected to already
+     * be in the correct format... Document, Long, String, etc...
+     *
+     * @param id  An id to search for
+     * @param ids Other ids to search for
+     * @return A Bson query for the id or ids
+     */
+    public Bson createIdQuery(Object id, Object... ids) {
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        if (ids.length == 0) {</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">            if (id instanceof BsonValue) {</span>
+<span class="nc" id="L214">                return Filters.eq(&quot;_id&quot;, id);</span>
+            }
+<span class="fc" id="L216">            return Filters.eq(&quot;_id&quot;, JacksonCodec.constructIdValue(id, JacksonCodec.getIdElement(valueClass)));</span>
+        }
+<span class="nc" id="L218">        List&lt;Object&gt; allIds = Arrays.asList(ids);</span>
+<span class="nc" id="L219">        allIds.add(id);</span>
+<span class="nc" id="L220">        return createIdInQuery(allIds);</span>
+    }
+
+    public Bson createIdInQuery(final List&lt;?&gt; allIds) {
+<span class="fc" id="L224">        final Optional&lt;? extends AnnotatedElement&gt; idElement = JacksonCodec.getIdElement(valueClass);</span>
+<span class="fc" id="L225">        return Filters.in(</span>
+            &quot;_id&quot;,
+<span class="fc" id="L227">            allIds.stream()</span>
+<span class="fc" id="L228">                .map((currentId) -&gt; {</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">                    if (currentId instanceof BsonValue) {</span>
+<span class="nc" id="L230">                        return currentId;</span>
+                    }
+<span class="fc" id="L232">                    return JacksonCodec.constructIdValue(currentId, idElement);</span>
+                })
+<span class="fc" id="L234">                .collect(Collectors.toList())</span>
+        );
+    }
+
+    /**
+     * Get the type of this collection
+     *
+     * @return The type
+     */
+    public JacksonCollectionKey&lt;TResult&gt; getCollectionKey() {
+<span class="nc" id="L244">        return new JacksonCollectionKey&lt;&gt;(getMongoCollection().getNamespace().getDatabaseName(), getMongoCollection().getNamespace().getCollectionName(), getValueClass());</span>
+    }
+
+    /**
+     * Get the underlying mongo collection
+     *
+     * @return The underlying mongo collection
+     */
+    public com.mongodb.client.MongoCollection&lt;TResult&gt; getMongoCollection() {
+<span class="fc" id="L253">        return mongoCollection;</span>
+    }
+
+    /**
+     * Gets the DB name in which the underlying collection is stored
+     *
+     * @return The name of the database in which this collection is being stored.
+     */
+    public String getDatabaseName() {
+<span class="fc" id="L262">        return mongoCollection.getNamespace().getDatabaseName();</span>
+    }
+
+    /**
+     * Gets the name of the underlying collection
+     *
+     * @return the name of the collection
+     */
+    public String getName() {
+<span class="fc" id="L271">        return mongoCollection.getNamespace().getCollectionName();</span>
+    }
+
+    public Class&lt;TResult&gt; getValueClass() {
+<span class="nc" id="L275">        return valueClass;</span>
+    }
+
+    /**
+     * Inserts objects into the database. if the objects' _id are null, they will be generated.
+     *
+     * @param objects The objects to insert
+     * @throws MongoBulkWriteException If there's an exception in the bulk write operation
+     * @throws MongoException          If an error occurred
+     */
+    @SafeVarargs
+    public final void insert(TResult... objects) throws MongoException, MongoBulkWriteException {
+<span class="fc" id="L287">        ArrayList&lt;TResult&gt; objectList = new ArrayList&lt;&gt;(objects.length);</span>
+<span class="fc" id="L288">        Collections.addAll(objectList, objects);</span>
+<span class="fc" id="L289">        insert(objectList);</span>
+<span class="fc" id="L290">    }</span>
+
+    /**
+     * Inserts objects into the database. if the objects' _id are null, they will be generated.
+     *
+     * @param list The objects to insert
+     * @throws MongoBulkWriteException If there's an exception in the bulk write operation
+     * @throws MongoException          If an error occurred
+     */
+    public void insert(List&lt;TResult&gt; list) throws MongoException, MongoBulkWriteException {
+<span class="fc" id="L300">        mongoCollection.insertMany(list);</span>
+<span class="fc" id="L301">    }</span>
+
+    /**
+     * Inserts objects into the database. if the objects' _id are null, they will be generated.
+     *
+     * @param objects The objects to insert
+     * @param concern the write concern
+     * @throws MongoBulkWriteException If there's an exception in the bulk write operation
+     * @throws MongoException          If an error occurred
+     */
+    @SafeVarargs
+    public final void insert(WriteConcern concern, TResult... objects)
+        throws MongoException, MongoBulkWriteException {
+<span class="nc" id="L314">        ArrayList&lt;TResult&gt; objectList = new ArrayList&lt;&gt;(objects.length);</span>
+<span class="nc" id="L315">        Collections.addAll(objectList, objects);</span>
+<span class="nc" id="L316">        insert(objectList, concern);</span>
+<span class="nc" id="L317">    }</span>
+
+    /**
+     * Inserts objects into the database. if the objects' _id are null, they will be generated.
+     *
+     * @param list    The objects to insert
+     * @param concern the write concern
+     * @throws MongoBulkWriteException If there's an exception in the bulk write operation
+     * @throws MongoException          If an error occurred
+     */
+    public void insert(List&lt;TResult&gt; list, WriteConcern concern)
+        throws MongoException {
+<span class="nc" id="L329">        mongoCollection.withWriteConcern(concern).insertMany(list);</span>
+<span class="nc" id="L330">    }</span>
+
+    /**
+     * Removes object from the database collection with the default WriteConcern
+     *
+     * @param _id the id of the document to remove
+     * @return The delete result
+     * @throws MongoWriteException        If the write failed due some other failure specific to the delete command
+     * @throws MongoWriteConcernException If the write failed due being unable to fulfill the write concern
+     * @throws MongoException             If an error occurred
+     */
+    public DeleteResult removeById(Object _id) throws MongoException, MongoWriteException, MongoWriteConcernException {
+<span class="fc" id="L342">        return deleteOne(createIdQuery(_id));</span>
+    }
+
+    /**
+     * Performs an update operation, replacing the entire document, for the document with this _id.
+     *
+     * @param _id    the _id of the object to replace
+     * @param object object with which to replace it
+     * @return The result
+     * @throws MongoWriteException        If the write failed due some other failure specific to the update command
+     * @throws MongoWriteConcernException If the write failed due being unable to fulfill the write concern
+     * @throws MongoException             If an error occurred
+     */
+    public UpdateResult replaceOneById(Object _id, TResult object) throws MongoException, MongoWriteException, MongoWriteConcernException {
+<span class="fc" id="L356">        return replaceOne(createIdQuery(_id), object);</span>
+    }
+
+    /**
+     * Saves and object to this collection (does insert or update based on the object _id). Uses default write concern.
+     *
+     * @param object the object to save. will add &lt;code&gt;_id&lt;/code&gt; field to object if
+     *               needed
+     * @return The UpdateResult result
+     * @throws MongoWriteException        If the write failed due some other failure specific to the delete command
+     * @throws MongoWriteConcernException If the write failed due being unable to fulfill the write concern
+     * @throws MongoException             If an error occurred
+     */
+    public UpdateResult save(TResult object) throws MongoWriteException, MongoWriteConcernException, MongoException {
+<span class="fc" id="L370">        return this.save(object, null);</span>
+    }
+
+    /**
+     * Saves an object to this collection (does insert or update based on the
+     * object _id).
+     *
+     * @param object  the &lt;code&gt;DBObject&lt;/code&gt; to save
+     * @param concern the write concern
+     * @return The UpdateResult result
+     * @throws MongoWriteException        If the write failed due some other failure specific to the delete command
+     * @throws MongoWriteConcernException If the write failed due being unable to fulfill the write concern
+     * @throws MongoException             If an error occurred
+     */
+    public UpdateResult save(TResult object, WriteConcern concern) throws MongoWriteException, MongoWriteConcernException, MongoException {
+<span class="fc" id="L385">        final JacksonCodec&lt;TResult&gt; codec = getValueClassCodec();</span>
+<span class="fc" id="L386">        BsonValue _id = codec.getDocumentId(object);</span>
+<span class="pc bpc" id="L387" title="1 of 4 branches missed.">        if (_id == null || _id.isNull()) {</span>
+<span class="pc bpc" id="L388" title="1 of 2 branches missed.">            if (concern == null) {</span>
+<span class="fc" id="L389">                insertOne(object);</span>
+            } else {
+<span class="nc" id="L391">                withWriteConcern(concern).insertOne(object);</span>
+            }
+<span class="fc" id="L393">            return UpdateResult.acknowledged(0, 1L, codec.getDocumentId(object));</span>
+        } else {
+<span class="pc bpc" id="L395" title="1 of 2 branches missed.">            if (concern != null) {</span>
+<span class="nc" id="L396">                return withWriteConcern(concern).replaceOne(new Document(&quot;_id&quot;, _id), object, new ReplaceOptions().upsert(true));</span>
+            }
+<span class="fc" id="L398">            return mongoCollection().replaceOne(new Document(&quot;_id&quot;, _id), object, new ReplaceOptions().upsert(true));</span>
+        }
+    }
+
+    private JacksonCodec&lt;TResult&gt; getValueClassCodec() {
+<span class="fc" id="L403">        return (JacksonCodec&lt;TResult&gt;) jacksonCodecRegistry.get(valueClass);</span>
+    }
+
+    @Override
+    protected MongoCollection&lt;TResult&gt; mongoCollection() {
+<span class="fc" id="L408">        return mongoCollection;</span>
+    }
+
+    /**
+     * Serialize the fields of the given object using the object mapper
+     * for this collection.
+     * This will convert POJOs to DBObjects where necessary.
+     * &lt;p&gt;
+     * {@inheritDoc}
+     */
+    @Override
+    protected Bson manageUpdateBson(final Bson update) {
+<span class="fc" id="L420">        initializeIfNecessary(update);</span>
+<span class="pc bpc" id="L421" title="1 of 2 branches missed.">        if (update instanceof InitializationRequiredForTransformation) {</span>
+<span class="fc" id="L422">            return update;</span>
+        }
+<span class="nc" id="L424">        return DocumentSerializationUtils.serializeFields(objectMapper, update, jacksonCodecRegistry);</span>
+    }
+
+    /**
+     * Does a simple conversion (using toBsonDocument with this collection's CodecRegistry).
+     *
+     * {@inheritDoc}
+     */
+    @Override
+    protected List&lt;Bson&gt; manageUpdatePipeline(final List&lt;? extends Bson&gt; update) {
+<span class="nc" id="L434">        return update.stream().map((u) -&gt; u.toBsonDocument(Document.class, jacksonCodecRegistry)).collect(Collectors.toList());</span>
+    }
+
+    /**
+     * Serialize the fields of the given object using the object mapper
+     * for this collection.
+     * This will convert POJOs to DBObjects where necessary.
+     * &lt;p&gt;
+     * {@inheritDoc}
+     */
+    @Override
+    protected Bson manageFilterBson(final Bson filter) {
+<span class="fc" id="L446">        initializeIfNecessary(filter);</span>
+<span class="fc bfc" id="L447" title="All 2 branches covered.">        if (filter instanceof InitializationRequiredForTransformation) {</span>
+<span class="fc" id="L448">            return filter;</span>
+        }
+<span class="fc" id="L450">        return DocumentSerializationUtils.serializeFilter(objectMapper, type, filter, jacksonCodecRegistry);</span>
+    }
+
+    /**
+     * Does no real conversion, but it does initialize the pipeline correctly if it is one of the deprecated
+     * mongojack ones..
+     *
+     * {@inheritDoc}
+     *
+     * @param pipeline a list of Bson documents making up an aggregation pipeline
+     */
+    @Override
+    @SuppressWarnings(&quot;unchecked&quot;)
+    protected List&lt;Bson&gt; manageAggregationPipeline(final List&lt;? extends Bson&gt; pipeline) {
+<span class="fc" id="L464">        initializeIfNecessary(pipeline);</span>
+<span class="fc" id="L465">        return (List&lt;Bson&gt;) pipeline;</span>
+    }
+
+    @Override
+    protected &lt;T1&gt; DistinctIterable&lt;T1&gt; wrapIterable(final DistinctIterable&lt;T1&gt; input) {
+<span class="nc" id="L470">        return new DistinctIterableDecorator&lt;&gt;(input, objectMapper, type, jacksonCodecRegistry);</span>
+    }
+
+    @Override
+    protected &lt;T1&gt; FindIterable&lt;T1&gt; wrapIterable(final FindIterable&lt;T1&gt; input) {
+<span class="fc" id="L475">        return new FindIterableDecorator&lt;&gt;(input, objectMapper, type, jacksonCodecRegistry);</span>
+    }
+
+    @Override
+    protected &lt;T1&gt; MapReduceIterable&lt;T1&gt; wrapIterable(final MapReduceIterable&lt;T1&gt; input) {
+<span class="fc" id="L480">        return new MapReduceIterableDecorator&lt;&gt;(input, objectMapper, type, jacksonCodecRegistry);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L485">        return String.format(&quot;%s&lt;%s, %s&gt;&quot;, getClass().getName(), getMongoCollection().getNamespace().getFullName(), valueClass.getName());</span>
+    }
+
+    /**
+     * Performs an update operation.
+     *
+     * @param _id    The id of the document to update
+     * @param update update with which to update
+     * @return The write result
+     * @throws MongoWriteException        If the write failed due some other failure specific to the update command
+     * @throws MongoWriteConcernException If the write failed due being unable to fulfill the write concern
+     * @throws MongoException             If an error occurred
+     */
+    public UpdateResult updateById(Object _id, Bson update)
+        throws MongoException, MongoWriteException, MongoWriteConcernException {
+<span class="fc" id="L500">        return updateOne(</span>
+<span class="fc" id="L501">            createIdQuery(_id),</span>
+            update
+        );
+    }
+
+    @Override
+    public &lt;NewTDocument&gt; JacksonMongoCollection&lt;NewTDocument&gt; withDocumentClass(final Class&lt;NewTDocument&gt; clazz) {
+<span class="nc" id="L508">        return new JacksonMongoCollection&lt;&gt;(</span>
+            objectMapper,
+            jacksonCodecRegistry,
+            view,
+            clazz,
+<span class="nc" id="L513">            objectMapper.constructType(clazz),</span>
+<span class="nc" id="L514">            mongoCollection.withDocumentClass(clazz)</span>
+        );
+    }
+
+    @Override
+    public MongoCollection&lt;TResult&gt; withCodecRegistry(final CodecRegistry codecRegistry) {
+<span class="nc" id="L520">        return mongoCollection.withCodecRegistry(codecRegistry);</span>
+    }
+
+    @Override
+    public JacksonMongoCollection&lt;TResult&gt; withReadPreference(final ReadPreference readPreference) {
+<span class="nc" id="L525">        return new JacksonMongoCollection&lt;&gt;(</span>
+            objectMapper,
+            jacksonCodecRegistry,
+            view,
+            valueClass,
+            type,
+<span class="nc" id="L531">            mongoCollection.withReadPreference(readPreference)</span>
+        );
+    }
+
+    @Override
+    public JacksonMongoCollection&lt;TResult&gt; withWriteConcern(final WriteConcern writeConcern) {
+<span class="fc" id="L537">        return new JacksonMongoCollection&lt;&gt;(</span>
+            objectMapper,
+            jacksonCodecRegistry,
+            view,
+            valueClass,
+            type,
+<span class="fc" id="L543">            mongoCollection.withWriteConcern(writeConcern)</span>
+        );
+    }
+
+    @Override
+    public JacksonMongoCollection&lt;TResult&gt; withReadConcern(final ReadConcern readConcern) {
+<span class="nc" id="L549">        return new JacksonMongoCollection&lt;&gt;(</span>
+            objectMapper,
+            jacksonCodecRegistry,
+            view,
+            valueClass,
+            type,
+<span class="nc" id="L555">            mongoCollection.withReadConcern(readConcern)</span>
+        );
+    }
+
+    private void initializeIfNecessary(Object maybeInitializable) {
+<span class="fc bfc" id="L560" title="All 2 branches covered.">        if (maybeInitializable instanceof InitializationRequiredForTransformation) {</span>
+<span class="fc" id="L561">            ((InitializationRequiredForTransformation) maybeInitializable).initialize(objectMapper, type, jacksonCodecRegistry);</span>
+        }
+<span class="fc" id="L563">    }</span>
+
+    /**
+     * Builder to build {@link JacksonMongoCollection}.
+     */
+    public static final class JacksonMongoCollectionBuilder {
+        private ObjectMapper objectMapper;
+        private Class&lt;?&gt; view;
+
+        private JacksonMongoCollectionBuilder() {
+        }
+
+        /**
+         * Sets the object mapper for this collection.  Optional
+         *
+         * @param objectMapper The object mapper to use
+         * @return the builder
+         */
+        public JacksonMongoCollectionBuilder withObjectMapper(ObjectMapper objectMapper) {
+<span class="fc" id="L582">            this.objectMapper = objectMapper;</span>
+<span class="fc" id="L583">            return this;</span>
+        }
+
+        /**
+         * Set a view class for this collection.  Optional.
+         * @param view The jackson view class
+         * @return the builder
+         */
+        @SuppressWarnings(&quot;unused&quot;)
+        public JacksonMongoCollectionBuilder withView(Class&lt;?&gt; view) {
+<span class="fc" id="L593">            this.view = view;</span>
+<span class="fc" id="L594">            return this;</span>
+        }
+
+        /**
+         * Builds a {@link JacksonMongoCollection}. Required parameters are set here.
+         *
+         * @param client         A client
+         * @param databaseName   Name of the database the collection is in
+         * @param collectionName Name of the collection itself
+         * @param valueType      The class of the value type
+         * @param &lt;CT&gt;           The value type
+         * @return A constructed collection meeting the MongoCollection interface.
+         */
+        public &lt;CT&gt; JacksonMongoCollection&lt;CT&gt; build(MongoClient client, String databaseName, String collectionName, Class&lt;CT&gt; valueType) {
+<span class="nc" id="L608">            return build(client.getDatabase(databaseName), collectionName, valueType);</span>
+        }
+
+        /**
+         * Builds a {@link JacksonMongoCollection}. Required parameters are set here.
+         *
+         * @param client       A client
+         * @param databaseName Name of the database the collection is in
+         * @param valueType    The class of the value type.  Must be annotated with {@link org.mongojack.MongoCollection}.
+         * @param &lt;CT&gt;         The value type
+         * @return A constructed collection meeting the MongoCollection interface.
+         */
+        public &lt;CT&gt; JacksonMongoCollection&lt;CT&gt; build(MongoClient client, String databaseName, Class&lt;CT&gt; valueType) {
+<span class="nc" id="L621">            return build(client.getDatabase(databaseName), valueType);</span>
+        }
+
+        /**
+         * Builds a {@link JacksonMongoCollection}. Required parameters are set here.
+         *
+         * @param database         A client
+         * @param collectionName Name of the collection itself
+         * @param valueType      The class of the value type
+         * @param &lt;CT&gt;           The value type
+         * @return A constructed collection meeting the MongoCollection interface.
+         */
+        public &lt;CT&gt; JacksonMongoCollection&lt;CT&gt; build(MongoDatabase database, String collectionName, Class&lt;CT&gt; valueType) {
+<span class="nc" id="L634">            return build(database.getCollection(collectionName, valueType), valueType);</span>
+        }
+
+        /**
+         * Builds a {@link JacksonMongoCollection}. Required parameters are set here.
+         *
+         * @param database       A client
+         * @param valueType      The class of the value type.  Must be annotated with {@link org.mongojack.MongoCollection}.
+         * @param &lt;CT&gt;           The value type
+         * @return A constructed collection meeting the MongoCollection interface.
+         */
+        public &lt;CT&gt; JacksonMongoCollection&lt;CT&gt; build(MongoDatabase database, Class&lt;CT&gt; valueType) {
+<span class="nc" id="L646">            final org.mongojack.MongoCollection annotation = valueType.getAnnotation(org.mongojack.MongoCollection.class);</span>
+<span class="nc bnc" id="L647" title="All 2 branches missed.">            if (annotation == null) {</span>
+<span class="nc" id="L648">                throw new IllegalArgumentException(&quot;You can only use the builder methods without explicit collection names if you have a class annotated with org.mongojack.MongoCollection&quot;);</span>
+            }
+<span class="nc" id="L650">            return build(database.getCollection(annotation.name(), valueType), valueType);</span>
+        }
+
+        /**
+         * Builds a {@link JacksonMongoCollection}. Required parameters are set here.
+         *
+         * @param mongoCollection The underlying collection
+         * @param valueType       The value type of the collection
+         * @param &lt;CT&gt;            The value type of the collection
+         * @return                A constructed collection
+         */
+        public &lt;CT&gt; JacksonMongoCollection&lt;CT&gt; build(com.mongodb.client.MongoCollection&lt;CT&gt; mongoCollection, Class&lt;CT&gt; valueType) {
+<span class="fc" id="L662">            return new JacksonMongoCollection&lt;&gt;(mongoCollection, this.objectMapper, valueType, view);</span>
+        }
+
+    }
+
+}
+
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

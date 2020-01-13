@@ -1,0 +1,1314 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MongoCollectionDecorator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack</a> &gt; <span class="el_source">MongoCollectionDecorator.java</span></div><h1>MongoCollectionDecorator.java</h1><pre class="source lang-java linenums">package org.mongojack;
+
+import com.mongodb.MongoNamespace;
+import com.mongodb.ReadConcern;
+import com.mongodb.ReadPreference;
+import com.mongodb.WriteConcern;
+import com.mongodb.bulk.BulkWriteResult;
+import com.mongodb.client.AggregateIterable;
+import com.mongodb.client.ChangeStreamIterable;
+import com.mongodb.client.ClientSession;
+import com.mongodb.client.DistinctIterable;
+import com.mongodb.client.FindIterable;
+import com.mongodb.client.ListIndexesIterable;
+import com.mongodb.client.MapReduceIterable;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.model.BulkWriteOptions;
+import com.mongodb.client.model.CountOptions;
+import com.mongodb.client.model.CreateIndexOptions;
+import com.mongodb.client.model.DeleteOptions;
+import com.mongodb.client.model.DropIndexOptions;
+import com.mongodb.client.model.EstimatedDocumentCountOptions;
+import com.mongodb.client.model.FindOneAndDeleteOptions;
+import com.mongodb.client.model.FindOneAndReplaceOptions;
+import com.mongodb.client.model.FindOneAndUpdateOptions;
+import com.mongodb.client.model.IndexModel;
+import com.mongodb.client.model.IndexOptions;
+import com.mongodb.client.model.InsertManyOptions;
+import com.mongodb.client.model.InsertOneOptions;
+import com.mongodb.client.model.RenameCollectionOptions;
+import com.mongodb.client.model.ReplaceOptions;
+import com.mongodb.client.model.UpdateOptions;
+import com.mongodb.client.model.WriteModel;
+import com.mongodb.client.result.DeleteResult;
+import com.mongodb.client.result.UpdateResult;
+import com.mongodb.lang.Nullable;
+import org.bson.Document;
+import org.bson.codecs.configuration.CodecRegistry;
+import org.bson.conversions.Bson;
+
+import java.util.List;
+
+/**
+ * A base class for decorating a MongoCollection.
+ *
+ * {@inheritDoc}
+ */
+<span class="fc" id="L47">public abstract class MongoCollectionDecorator&lt;TDocument&gt; implements MongoCollection&lt;TDocument&gt; {</span>
+
+    /**
+     * Get the mongo collection that we're operating on.
+     *
+     * @return A mongo collection.  Must not be null.  Must not be this.
+     */
+    protected abstract MongoCollection&lt;TDocument&gt; mongoCollection();
+
+    /**
+     * Manage the input Bson in any way necessary to produce a proper update.  The expectation
+     * is that this is passed through the mapper or the codec, but the implementation is free
+     * to do what it wants as long as the returned Bson is valid.
+     * 
+     * @param update a valid Bson update document (e.g. containing $set, etc).
+     * @return  a valid Bson update document (e.g. containing $set, etc) transformed as necessary
+     */
+    protected abstract Bson manageUpdateBson(Bson update);
+
+    /**
+     * Manage the input Bson in any way necessary to produce a proper update.  The expectation
+     * is that this is passed through the mapper or the codec, but the implementation is free
+     * to do what it wants as long as the returned Bson is valid.
+     *
+     * @param update a valid Bson update pipeline (e.g. containing $set, etc).
+     * @return  a valid Bson update pipeline (e.g. containing $set, etc) transformed as necessary
+     */
+    protected abstract List&lt;Bson&gt; manageUpdatePipeline(List&lt;? extends Bson&gt; update);
+
+    /**
+     * Manage the input Bson in any way necessary to produce a proper filter.  The expectation
+     * is that this is passed through the mapper or the codec, but the implementation is free
+     * to do what it wants as long as the returned Bson is valid.
+     *
+     * @param filter a valid Bson filter document.
+     * @return  a valid Bson filter document transformed as necessary
+     */
+    protected abstract Bson manageFilterBson(Bson filter);
+
+    /**
+     * Manage the input Bson in any way necessary to produce a proper pipeline.  The expectation
+     * is that this is passed through the mapper or the codec, but the implementation is free
+     * to do what it wants as long as the returned Bson is valid.
+     *
+     * @param pipeline a list of Bson documents making up an aggregation pipeline
+     * @return  a list of Bson documents making up an aggregation pipeline, transformed as necessary
+     */
+    protected abstract List&lt;Bson&gt; manageAggregationPipeline(List&lt;? extends Bson&gt; pipeline);
+
+    /**
+     * Wraps an iterable that supports further .filter() calls so that we can perform mapping on them.
+     *
+     * @param input a valid iterable
+     * @param &lt;T&gt;   return type of the iterable
+     * @return      a wrapped iterable that supports some extended filter operations
+     */
+    protected abstract &lt;T&gt; DistinctIterable&lt;T&gt; wrapIterable(DistinctIterable&lt;T&gt; input);
+
+    /**
+     * Wraps an iterable that supports further .filter() calls so that we can perform mapping on them.
+     *
+     * @param input a valid iterable
+     * @param &lt;T&gt;   return type of the iterable
+     * @return      a wrapped iterable that supports some extended filter operations
+     */
+    protected abstract &lt;T&gt; FindIterable&lt;T&gt; wrapIterable(FindIterable&lt;T&gt; input);
+
+    /**
+     * Wraps an iterable that supports further .filter() calls so that we can perform mapping on them.
+     *
+     * @param input a valid iterable
+     * @param &lt;T&gt;   return type of the iterable
+     * @return      a wrapped iterable that supports some extended filter operations
+     */
+    protected abstract &lt;T&gt; MapReduceIterable&lt;T&gt; wrapIterable(MapReduceIterable&lt;T&gt; input);
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MongoNamespace getNamespace() {
+<span class="nc" id="L128">        return mongoCollection().getNamespace();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Class&lt;TDocument&gt; getDocumentClass() {
+<span class="nc" id="L136">        return mongoCollection().getDocumentClass();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public CodecRegistry getCodecRegistry() {
+<span class="nc" id="L144">        return mongoCollection().getCodecRegistry();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ReadPreference getReadPreference() {
+<span class="nc" id="L152">        return mongoCollection().getReadPreference();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public WriteConcern getWriteConcern() {
+<span class="nc" id="L160">        return mongoCollection().getWriteConcern();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ReadConcern getReadConcern() {
+<span class="nc" id="L168">        return mongoCollection().getReadConcern();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Deprecated
+    public long count() {
+<span class="fc" id="L177">        return mongoCollection().count();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Deprecated
+    public long count(final Bson filter) {
+<span class="nc" id="L186">        return mongoCollection().count(manageFilterBson(filter));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Deprecated
+    public long count(final Bson filter, final CountOptions options) {
+<span class="nc" id="L195">        return mongoCollection().count(manageFilterBson(filter), options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Deprecated
+    public long count(final ClientSession clientSession) {
+<span class="nc" id="L204">        return mongoCollection().count(clientSession);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Deprecated
+    public long count(final ClientSession clientSession, final Bson filter) {
+<span class="nc" id="L213">        return mongoCollection().count(clientSession, manageFilterBson(filter));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Deprecated
+    public long count(final ClientSession clientSession, final Bson filter, final CountOptions options) {
+<span class="nc" id="L222">        return mongoCollection().count(clientSession, manageFilterBson(filter), options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long countDocuments() {
+<span class="nc" id="L230">        return mongoCollection().countDocuments();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long countDocuments(final Bson filter) {
+<span class="nc" id="L238">        return mongoCollection().countDocuments(manageFilterBson(filter));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long countDocuments(final Bson filter, final CountOptions options) {
+<span class="nc" id="L246">        return mongoCollection().countDocuments(manageFilterBson(filter), options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long countDocuments(final ClientSession clientSession) {
+<span class="nc" id="L254">        return mongoCollection().countDocuments(clientSession);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long countDocuments(final ClientSession clientSession, final Bson filter) {
+<span class="nc" id="L262">        return mongoCollection().countDocuments(clientSession, manageFilterBson(filter));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long countDocuments(final ClientSession clientSession, final Bson filter, final CountOptions options) {
+<span class="nc" id="L270">        return mongoCollection().countDocuments(clientSession, manageFilterBson(filter), options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long estimatedDocumentCount() {
+<span class="nc" id="L278">        return mongoCollection().estimatedDocumentCount();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public long estimatedDocumentCount(final EstimatedDocumentCountOptions options) {
+<span class="nc" id="L286">        return mongoCollection().estimatedDocumentCount(options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; DistinctIterable&lt;TResult&gt; distinct(final String fieldName, final Class&lt;TResult&gt; tResultClass) {
+<span class="nc" id="L294">        return wrapIterable(mongoCollection().distinct(fieldName, tResultClass));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; DistinctIterable&lt;TResult&gt; distinct(final String fieldName, final Bson filter, final Class&lt;TResult&gt; tResultClass) {
+<span class="nc" id="L302">        return wrapIterable(mongoCollection().distinct(fieldName, manageFilterBson(filter), tResultClass));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; DistinctIterable&lt;TResult&gt; distinct(final ClientSession clientSession, final String fieldName, final Class&lt;TResult&gt; tResultClass) {
+<span class="nc" id="L310">        return wrapIterable(mongoCollection().distinct(clientSession, fieldName, tResultClass));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; DistinctIterable&lt;TResult&gt; distinct(
+        final ClientSession clientSession,
+        final String fieldName,
+        final Bson filter,
+        final Class&lt;TResult&gt; tResultClass
+    ) {
+<span class="nc" id="L323">        return wrapIterable(mongoCollection().distinct(clientSession, fieldName, manageFilterBson(filter), tResultClass));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TDocument&gt; find() {
+<span class="fc" id="L331">        return wrapIterable(mongoCollection().find());</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; FindIterable&lt;TResult&gt; find(final Class&lt;TResult&gt; tResultClass) {
+<span class="nc" id="L339">        return wrapIterable(mongoCollection().find(tResultClass));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TDocument&gt; find(final Bson filter) {
+<span class="fc" id="L347">        return wrapIterable(mongoCollection().find(manageFilterBson(filter)));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; FindIterable&lt;TResult&gt; find(final Bson filter, final Class&lt;TResult&gt; tResultClass) {
+<span class="nc" id="L355">        return wrapIterable(mongoCollection().find(manageFilterBson(filter), tResultClass));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TDocument&gt; find(final ClientSession clientSession) {
+<span class="nc" id="L363">        return wrapIterable(mongoCollection().find(clientSession));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; FindIterable&lt;TResult&gt; find(final ClientSession clientSession, final Class&lt;TResult&gt; tResultClass) {
+<span class="nc" id="L371">        return wrapIterable(mongoCollection().find(clientSession, tResultClass));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TDocument&gt; find(final ClientSession clientSession, final Bson filter) {
+<span class="nc" id="L379">        return wrapIterable(mongoCollection().find(clientSession, manageFilterBson(filter)));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; FindIterable&lt;TResult&gt; find(final ClientSession clientSession, final Bson filter, final Class&lt;TResult&gt; tResultClass) {
+<span class="nc" id="L387">        return wrapIterable(mongoCollection().find(clientSession, manageFilterBson(filter), tResultClass));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public AggregateIterable&lt;TDocument&gt; aggregate(final List&lt;? extends Bson&gt; pipeline) {
+<span class="nc" id="L395">        return mongoCollection().aggregate(manageAggregationPipeline(pipeline));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; AggregateIterable&lt;TResult&gt; aggregate(final List&lt;? extends Bson&gt; pipeline, final Class&lt;TResult&gt; tResultClass) {
+<span class="fc" id="L403">        return mongoCollection().aggregate(manageAggregationPipeline(pipeline), tResultClass);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public AggregateIterable&lt;TDocument&gt; aggregate(final ClientSession clientSession, final List&lt;? extends Bson&gt; pipeline) {
+<span class="nc" id="L411">        return mongoCollection().aggregate(clientSession, manageAggregationPipeline(pipeline));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; AggregateIterable&lt;TResult&gt; aggregate(
+        final ClientSession clientSession,
+        final List&lt;? extends Bson&gt; pipeline,
+        final Class&lt;TResult&gt; tResultClass
+    ) {
+<span class="nc" id="L423">        return mongoCollection().aggregate(clientSession, manageAggregationPipeline(pipeline), tResultClass);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeStreamIterable&lt;TDocument&gt; watch() {
+<span class="nc" id="L431">        return mongoCollection().watch();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; ChangeStreamIterable&lt;TResult&gt; watch(final Class&lt;TResult&gt; tResultClass) {
+<span class="nc" id="L439">        return mongoCollection().watch(tResultClass);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeStreamIterable&lt;TDocument&gt; watch(final List&lt;? extends Bson&gt; pipeline) {
+<span class="nc" id="L447">        return mongoCollection().watch(manageAggregationPipeline(pipeline));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; ChangeStreamIterable&lt;TResult&gt; watch(final List&lt;? extends Bson&gt; pipeline, final Class&lt;TResult&gt; tResultClass) {
+<span class="nc" id="L455">        return mongoCollection().watch(manageAggregationPipeline(pipeline), tResultClass);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeStreamIterable&lt;TDocument&gt; watch(final ClientSession clientSession) {
+<span class="nc" id="L463">        return mongoCollection().watch(clientSession);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; ChangeStreamIterable&lt;TResult&gt; watch(final ClientSession clientSession, final Class&lt;TResult&gt; tResultClass) {
+<span class="nc" id="L471">        return mongoCollection().watch(clientSession, tResultClass);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ChangeStreamIterable&lt;TDocument&gt; watch(final ClientSession clientSession, final List&lt;? extends Bson&gt; pipeline) {
+<span class="nc" id="L479">        return mongoCollection().watch(clientSession, manageAggregationPipeline(pipeline));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; ChangeStreamIterable&lt;TResult&gt; watch(
+        final ClientSession clientSession,
+        final List&lt;? extends Bson&gt; pipeline,
+        final Class&lt;TResult&gt; tResultClass
+    ) {
+<span class="nc" id="L491">        return mongoCollection().watch(clientSession, manageAggregationPipeline(pipeline), tResultClass);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MapReduceIterable&lt;TDocument&gt; mapReduce(final String mapFunction, final String reduceFunction) {
+<span class="nc" id="L499">        return wrapIterable(mongoCollection().mapReduce(mapFunction, reduceFunction));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; MapReduceIterable&lt;TResult&gt; mapReduce(final String mapFunction, final String reduceFunction, final Class&lt;TResult&gt; tResultClass) {
+<span class="fc" id="L507">        return wrapIterable(mongoCollection().mapReduce(mapFunction, reduceFunction, tResultClass));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MapReduceIterable&lt;TDocument&gt; mapReduce(final ClientSession clientSession, final String mapFunction, final String reduceFunction) {
+<span class="nc" id="L515">        return wrapIterable(mongoCollection().mapReduce(clientSession, mapFunction, reduceFunction));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; MapReduceIterable&lt;TResult&gt; mapReduce(
+        final ClientSession clientSession,
+        final String mapFunction,
+        final String reduceFunction,
+        final Class&lt;TResult&gt; tResultClass
+    ) {
+<span class="nc" id="L528">        return wrapIterable(mongoCollection().mapReduce(clientSession, mapFunction, reduceFunction, tResultClass));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public BulkWriteResult bulkWrite(final List&lt;? extends WriteModel&lt;? extends TDocument&gt;&gt; requests) {
+<span class="nc" id="L536">        return mongoCollection().bulkWrite(requests);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public BulkWriteResult bulkWrite(final List&lt;? extends WriteModel&lt;? extends TDocument&gt;&gt; requests, final BulkWriteOptions options) {
+<span class="nc" id="L544">        return mongoCollection().bulkWrite(requests, options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public BulkWriteResult bulkWrite(final ClientSession clientSession, final List&lt;? extends WriteModel&lt;? extends TDocument&gt;&gt; requests) {
+<span class="nc" id="L552">        return mongoCollection().bulkWrite(clientSession, requests);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public BulkWriteResult bulkWrite(
+        final ClientSession clientSession,
+        final List&lt;? extends WriteModel&lt;? extends TDocument&gt;&gt; requests,
+        final BulkWriteOptions options
+    ) {
+<span class="nc" id="L564">        return mongoCollection().bulkWrite(clientSession, requests, options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void insertOne(final TDocument tDocument) {
+<span class="fc" id="L572">        mongoCollection().insertOne(tDocument);</span>
+<span class="fc" id="L573">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void insertOne(final TDocument tDocument, final InsertOneOptions options) {
+<span class="nc" id="L580">        mongoCollection().insertOne(tDocument, options);</span>
+<span class="nc" id="L581">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void insertOne(final ClientSession clientSession, final TDocument tDocument) {
+<span class="nc" id="L588">        mongoCollection().insertOne(clientSession, tDocument);</span>
+<span class="nc" id="L589">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void insertOne(final ClientSession clientSession, final TDocument tDocument, final InsertOneOptions options) {
+<span class="nc" id="L596">        mongoCollection().insertOne(clientSession, tDocument, options);</span>
+<span class="nc" id="L597">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void insertMany(final List&lt;? extends TDocument&gt; tDocuments) {
+<span class="nc" id="L604">        mongoCollection().insertMany(tDocuments);</span>
+<span class="nc" id="L605">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void insertMany(final List&lt;? extends TDocument&gt; tDocuments, final InsertManyOptions options) {
+<span class="nc" id="L612">        mongoCollection().insertMany(tDocuments, options);</span>
+<span class="nc" id="L613">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void insertMany(final ClientSession clientSession, final List&lt;? extends TDocument&gt; tDocuments) {
+<span class="nc" id="L620">        mongoCollection().insertMany(clientSession, tDocuments);</span>
+<span class="nc" id="L621">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void insertMany(final ClientSession clientSession, final List&lt;? extends TDocument&gt; tDocuments, final InsertManyOptions options) {
+<span class="nc" id="L628">        mongoCollection().insertMany(clientSession, tDocuments, options);</span>
+<span class="nc" id="L629">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public DeleteResult deleteOne(final Bson filter) {
+<span class="fc" id="L636">        return mongoCollection().deleteOne(manageFilterBson(filter));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public DeleteResult deleteOne(final Bson filter, final DeleteOptions options) {
+<span class="nc" id="L644">        return mongoCollection().deleteOne(manageFilterBson(filter), options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public DeleteResult deleteOne(final ClientSession clientSession, final Bson filter) {
+<span class="nc" id="L652">        return mongoCollection().deleteOne(clientSession, manageFilterBson(filter));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public DeleteResult deleteOne(final ClientSession clientSession, final Bson filter, final DeleteOptions options) {
+<span class="nc" id="L660">        return mongoCollection().deleteOne(clientSession, manageFilterBson(filter), options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public DeleteResult deleteMany(final Bson filter) {
+<span class="fc" id="L668">        return mongoCollection().deleteMany(manageFilterBson(filter));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public DeleteResult deleteMany(final Bson filter, final DeleteOptions options) {
+<span class="nc" id="L676">        return mongoCollection().deleteMany(manageFilterBson(filter), options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public DeleteResult deleteMany(final ClientSession clientSession, final Bson filter) {
+<span class="nc" id="L684">        return mongoCollection().deleteMany(clientSession, manageFilterBson(filter));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public DeleteResult deleteMany(final ClientSession clientSession, final Bson filter, final DeleteOptions options) {
+<span class="nc" id="L692">        return mongoCollection().deleteMany(clientSession, manageFilterBson(filter), options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult replaceOne(final Bson filter, final TDocument replacement) {
+<span class="fc" id="L700">        return mongoCollection().replaceOne(manageFilterBson(filter), replacement);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Deprecated
+    public UpdateResult replaceOne(final Bson filter, final TDocument replacement, final UpdateOptions updateOptions) {
+<span class="nc" id="L709">        return mongoCollection().replaceOne(manageFilterBson(filter), replacement, updateOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult replaceOne(final Bson filter, final TDocument replacement, final ReplaceOptions replaceOptions) {
+<span class="fc" id="L717">        return mongoCollection().replaceOne(manageFilterBson(filter), replacement, replaceOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult replaceOne(final ClientSession clientSession, final Bson filter, final TDocument replacement) {
+<span class="nc" id="L725">        return mongoCollection().replaceOne(clientSession, manageFilterBson(filter), replacement);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Deprecated
+    public UpdateResult replaceOne(
+        final ClientSession clientSession,
+        final Bson filter,
+        final TDocument replacement,
+        final UpdateOptions updateOptions
+    ) {
+<span class="nc" id="L739">        return mongoCollection().replaceOne(clientSession, manageFilterBson(filter), replacement, updateOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult replaceOne(
+        final ClientSession clientSession,
+        final Bson filter,
+        final TDocument replacement,
+        final ReplaceOptions replaceOptions
+    ) {
+<span class="nc" id="L752">        return mongoCollection().replaceOne(clientSession, manageFilterBson(filter), replacement, replaceOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateOne(final Bson filter, final Bson update) {
+<span class="fc" id="L760">        return mongoCollection().updateOne(manageFilterBson(filter), manageUpdateBson(update));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateOne(final Bson filter, final Bson update, final UpdateOptions updateOptions) {
+<span class="fc" id="L768">        return mongoCollection().updateOne(manageFilterBson(filter), manageUpdateBson(update), updateOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateOne(final ClientSession clientSession, final Bson filter, final Bson update) {
+<span class="nc" id="L776">        return mongoCollection().updateOne(clientSession, manageFilterBson(filter), manageUpdateBson(update));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateOne(
+        final ClientSession clientSession,
+        final Bson filter,
+        final Bson update,
+        final UpdateOptions updateOptions
+    ) {
+<span class="nc" id="L789">        return mongoCollection().updateOne(clientSession, manageFilterBson(filter), manageUpdateBson(update), updateOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateOne(final Bson filter, final List&lt;? extends Bson&gt; update) {
+<span class="nc" id="L797">        return mongoCollection().updateOne(manageFilterBson(filter), manageUpdatePipeline(update));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateOne(
+        final Bson filter,
+        final List&lt;? extends Bson&gt; update,
+        final UpdateOptions updateOptions
+    ) {
+<span class="nc" id="L809">        return mongoCollection().updateOne(manageFilterBson(filter), manageUpdatePipeline(update), updateOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateOne(final ClientSession clientSession, final Bson filter, final List&lt;? extends Bson&gt; update) {
+<span class="nc" id="L817">        return mongoCollection().updateOne(clientSession, manageFilterBson(filter), manageUpdatePipeline(update));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateOne(
+        final ClientSession clientSession,
+        final Bson filter,
+        final List&lt;? extends Bson&gt; update,
+        final UpdateOptions updateOptions
+    ) {
+<span class="nc" id="L830">        return mongoCollection().updateOne(clientSession, manageFilterBson(filter), manageUpdatePipeline(update), updateOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateMany(final Bson filter, final Bson update) {
+<span class="fc" id="L838">        return mongoCollection().updateMany(manageFilterBson(filter), manageUpdateBson(update));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateMany(final Bson filter, final Bson update, final UpdateOptions updateOptions) {
+<span class="nc" id="L846">        return mongoCollection().updateMany(manageFilterBson(filter), manageUpdateBson(update), updateOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateMany(final ClientSession clientSession, final Bson filter, final Bson update) {
+<span class="nc" id="L854">        return mongoCollection().updateMany(clientSession, manageFilterBson(filter), manageUpdateBson(update));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateMany(
+        final ClientSession clientSession,
+        final Bson filter,
+        final Bson update,
+        final UpdateOptions updateOptions
+    ) {
+<span class="nc" id="L867">        return mongoCollection().updateMany(clientSession, manageFilterBson(filter), manageUpdateBson(update), updateOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateMany(final Bson filter, final List&lt;? extends Bson&gt; update) {
+<span class="nc" id="L875">        return mongoCollection().updateMany(manageFilterBson(filter), manageUpdatePipeline(update));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateMany(
+        final Bson filter,
+        final List&lt;? extends Bson&gt; update,
+        final UpdateOptions updateOptions
+    ) {
+<span class="nc" id="L887">        return mongoCollection().updateMany(manageFilterBson(filter), manageUpdatePipeline(update), updateOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateMany(final ClientSession clientSession, final Bson filter, final List&lt;? extends Bson&gt; update) {
+<span class="nc" id="L895">        return mongoCollection().updateMany(clientSession, manageFilterBson(filter), manageUpdatePipeline(update));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public UpdateResult updateMany(
+        final ClientSession clientSession,
+        final Bson filter,
+        final List&lt;? extends Bson&gt; update,
+        final UpdateOptions updateOptions
+    ) {
+<span class="nc" id="L908">        return mongoCollection().updateMany(clientSession, manageFilterBson(filter), manageUpdatePipeline(update), updateOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndDelete(final Bson filter) {
+<span class="nc" id="L917">        return mongoCollection().findOneAndDelete(manageFilterBson(filter));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndDelete(final Bson filter, final FindOneAndDeleteOptions options) {
+<span class="nc" id="L926">        return mongoCollection().findOneAndDelete(manageFilterBson(filter), options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndDelete(final ClientSession clientSession, final Bson filter) {
+<span class="nc" id="L935">        return mongoCollection().findOneAndDelete(clientSession, manageFilterBson(filter));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndDelete(final ClientSession clientSession, final Bson filter, final FindOneAndDeleteOptions options) {
+<span class="nc" id="L944">        return mongoCollection().findOneAndDelete(clientSession, manageFilterBson(filter), options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndReplace(final Bson filter, final TDocument replacement) {
+<span class="nc" id="L953">        return mongoCollection().findOneAndReplace(manageFilterBson(filter), replacement);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndReplace(final Bson filter, final TDocument replacement, final FindOneAndReplaceOptions options) {
+<span class="nc" id="L962">        return mongoCollection().findOneAndReplace(manageFilterBson(filter), replacement, options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndReplace(final ClientSession clientSession, final Bson filter, final TDocument replacement) {
+<span class="nc" id="L971">        return mongoCollection().findOneAndReplace(clientSession, manageFilterBson(filter), replacement);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndReplace(final ClientSession clientSession, final Bson filter, final TDocument replacement, final FindOneAndReplaceOptions options) {
+<span class="nc" id="L980">        return mongoCollection().findOneAndReplace(clientSession, manageFilterBson(filter), replacement, options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndUpdate(final Bson filter, final Bson update) {
+<span class="nc" id="L989">        return mongoCollection().findOneAndUpdate(manageFilterBson(filter), manageUpdateBson(update));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndUpdate(final Bson filter, final Bson update, final FindOneAndUpdateOptions options) {
+<span class="fc" id="L998">        return mongoCollection().findOneAndUpdate(manageFilterBson(filter), manageUpdateBson(update), options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndUpdate(final ClientSession clientSession, final Bson filter, final Bson update) {
+<span class="nc" id="L1007">        return mongoCollection().findOneAndUpdate(clientSession, manageFilterBson(filter), manageUpdateBson(update));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndUpdate(
+        final ClientSession clientSession,
+        final Bson filter,
+        final Bson update,
+        final FindOneAndUpdateOptions options
+    ) {
+<span class="nc" id="L1021">        return mongoCollection().findOneAndUpdate(clientSession, manageFilterBson(filter), manageUpdateBson(update), options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndUpdate(final Bson filter, final List&lt;? extends Bson&gt; update) {
+<span class="nc" id="L1030">        return mongoCollection().findOneAndUpdate(manageFilterBson(filter), manageUpdatePipeline(update));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndUpdate(final Bson filter, final List&lt;? extends Bson&gt; update, final FindOneAndUpdateOptions options) {
+<span class="nc" id="L1039">        return mongoCollection().findOneAndUpdate(manageFilterBson(filter), manageUpdatePipeline(update), options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndUpdate(final ClientSession clientSession, final Bson filter, final List&lt;? extends Bson&gt; update) {
+<span class="nc" id="L1048">        return mongoCollection().findOneAndUpdate(clientSession, manageFilterBson(filter), manageUpdatePipeline(update));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TDocument findOneAndUpdate(
+        final ClientSession clientSession,
+        final Bson filter,
+        final List&lt;? extends Bson&gt; update,
+        final FindOneAndUpdateOptions options
+    ) {
+<span class="nc" id="L1062">        return mongoCollection().findOneAndUpdate(clientSession, manageFilterBson(filter), manageUpdatePipeline(update), options);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void drop() {
+<span class="nc" id="L1070">        mongoCollection().drop();</span>
+<span class="nc" id="L1071">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void drop(final ClientSession clientSession) {
+<span class="nc" id="L1078">        mongoCollection().drop(clientSession);</span>
+<span class="nc" id="L1079">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String createIndex(final Bson keys) {
+<span class="nc" id="L1086">        return mongoCollection().createIndex(keys);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String createIndex(final Bson keys, final IndexOptions indexOptions) {
+<span class="nc" id="L1094">        return mongoCollection().createIndex(keys, indexOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String createIndex(final ClientSession clientSession, final Bson keys) {
+<span class="nc" id="L1102">        return mongoCollection().createIndex(clientSession, keys);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public String createIndex(final ClientSession clientSession, final Bson keys, final IndexOptions indexOptions) {
+<span class="nc" id="L1110">        return mongoCollection().createIndex(clientSession, keys, indexOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;String&gt; createIndexes(final List&lt;IndexModel&gt; indexes) {
+<span class="nc" id="L1118">        return mongoCollection().createIndexes(indexes);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;String&gt; createIndexes(final List&lt;IndexModel&gt; indexes, final CreateIndexOptions createIndexOptions) {
+<span class="nc" id="L1126">        return mongoCollection().createIndexes(indexes, createIndexOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;String&gt; createIndexes(final ClientSession clientSession, final List&lt;IndexModel&gt; indexes) {
+<span class="nc" id="L1134">        return mongoCollection().createIndexes(clientSession, indexes);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List&lt;String&gt; createIndexes(
+        final ClientSession clientSession,
+        final List&lt;IndexModel&gt; indexes,
+        final CreateIndexOptions createIndexOptions
+    ) {
+<span class="nc" id="L1146">        return mongoCollection().createIndexes(clientSession, indexes, createIndexOptions);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ListIndexesIterable&lt;Document&gt; listIndexes() {
+<span class="nc" id="L1154">        return mongoCollection().listIndexes();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; ListIndexesIterable&lt;TResult&gt; listIndexes(final Class&lt;TResult&gt; tResultClass) {
+<span class="nc" id="L1162">        return mongoCollection().listIndexes(tResultClass);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ListIndexesIterable&lt;Document&gt; listIndexes(final ClientSession clientSession) {
+<span class="nc" id="L1170">        return mongoCollection().listIndexes(clientSession);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;TResult&gt; ListIndexesIterable&lt;TResult&gt; listIndexes(final ClientSession clientSession, final Class&lt;TResult&gt; tResultClass) {
+<span class="nc" id="L1178">        return mongoCollection().listIndexes(clientSession, tResultClass);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void dropIndex(final String indexName) {
+<span class="nc" id="L1186">        mongoCollection().dropIndex(indexName);</span>
+<span class="nc" id="L1187">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void dropIndex(final String indexName, final DropIndexOptions dropIndexOptions) {
+<span class="nc" id="L1194">        mongoCollection().dropIndex(indexName, dropIndexOptions);</span>
+<span class="nc" id="L1195">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void dropIndex(final Bson keys) {
+<span class="nc" id="L1202">        mongoCollection().dropIndex(keys);</span>
+<span class="nc" id="L1203">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void dropIndex(final Bson keys, final DropIndexOptions dropIndexOptions) {
+<span class="nc" id="L1210">        mongoCollection().dropIndex(keys, dropIndexOptions);</span>
+<span class="nc" id="L1211">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void dropIndex(final ClientSession clientSession, final String indexName) {
+<span class="nc" id="L1218">        mongoCollection().dropIndex(clientSession, indexName);</span>
+<span class="nc" id="L1219">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void dropIndex(final ClientSession clientSession, final Bson keys) {
+<span class="nc" id="L1226">        mongoCollection().dropIndex(clientSession, keys);</span>
+<span class="nc" id="L1227">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void dropIndex(final ClientSession clientSession, final String indexName, final DropIndexOptions dropIndexOptions) {
+<span class="nc" id="L1234">        mongoCollection().dropIndex(clientSession, indexName, dropIndexOptions);</span>
+<span class="nc" id="L1235">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void dropIndex(final ClientSession clientSession, final Bson keys, final DropIndexOptions dropIndexOptions) {
+<span class="nc" id="L1242">        mongoCollection().dropIndex(clientSession, keys, dropIndexOptions);</span>
+<span class="nc" id="L1243">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void dropIndexes() {
+<span class="nc" id="L1250">        mongoCollection().dropIndexes();</span>
+<span class="nc" id="L1251">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void dropIndexes(final ClientSession clientSession) {
+<span class="nc" id="L1258">        mongoCollection().dropIndexes(clientSession);</span>
+<span class="nc" id="L1259">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void dropIndexes(final DropIndexOptions dropIndexOptions) {
+<span class="nc" id="L1266">        mongoCollection().dropIndexes(dropIndexOptions);</span>
+<span class="nc" id="L1267">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void dropIndexes(final ClientSession clientSession, final DropIndexOptions dropIndexOptions) {
+<span class="nc" id="L1274">        mongoCollection().dropIndexes(clientSession, dropIndexOptions);</span>
+<span class="nc" id="L1275">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void renameCollection(final MongoNamespace newCollectionNamespace) {
+<span class="nc" id="L1282">        mongoCollection().renameCollection(newCollectionNamespace);</span>
+<span class="nc" id="L1283">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void renameCollection(final MongoNamespace newCollectionNamespace, final RenameCollectionOptions renameCollectionOptions) {
+<span class="nc" id="L1290">        mongoCollection().renameCollection(newCollectionNamespace, renameCollectionOptions);</span>
+<span class="nc" id="L1291">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void renameCollection(final ClientSession clientSession, final MongoNamespace newCollectionNamespace) {
+<span class="nc" id="L1298">        mongoCollection().renameCollection(clientSession, newCollectionNamespace);</span>
+<span class="nc" id="L1299">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void renameCollection(
+        final ClientSession clientSession,
+        final MongoNamespace newCollectionNamespace,
+        final RenameCollectionOptions renameCollectionOptions
+    ) {
+<span class="nc" id="L1310">        mongoCollection().renameCollection(clientSession, newCollectionNamespace, renameCollectionOptions);</span>
+<span class="nc" id="L1311">    }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

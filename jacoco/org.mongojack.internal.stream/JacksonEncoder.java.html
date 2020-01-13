@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JacksonEncoder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal.stream</a> &gt; <span class="el_source">JacksonEncoder.java</span></div><h1>JacksonEncoder.java</h1><pre class="source lang-java linenums">package org.mongojack.internal.stream;
+
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mongodb.MongoException;
+import de.undercouch.bson4jackson.BsonGenerator;
+import org.bson.BsonBinaryReader;
+import org.bson.BsonWriter;
+import org.bson.ByteBufNIO;
+import org.bson.codecs.Encoder;
+import org.bson.codecs.EncoderContext;
+import org.bson.io.BasicOutputBuffer;
+import org.bson.io.ByteBufferBsonInput;
+import org.bson.io.OutputBuffer;
+import org.mongojack.MongoJsonMappingException;
+
+import java.io.IOException;
+
+import static java.nio.ByteBuffer.*;
+
+public class JacksonEncoder&lt;T&gt; implements Encoder&lt;T&gt; {
+
+    private final Class&lt;T&gt; clazz;
+    private final Class&lt;?&gt; view;
+    private final ObjectMapper objectMapper;
+
+<span class="fc" id="L28">    public JacksonEncoder(Class&lt;T&gt; clazz, Class&lt;?&gt; view, ObjectMapper objectMapper) {</span>
+<span class="fc" id="L29">        this.clazz = clazz;</span>
+<span class="fc" id="L30">        this.view = view;</span>
+<span class="fc" id="L31">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L32">    }</span>
+
+    private int writeObject(OutputBuffer buf, T object) {
+<span class="fc" id="L35">        OutputBufferOutputStream stream = new OutputBufferOutputStream(buf);</span>
+<span class="fc" id="L36">        BsonGenerator generator = new DBEncoderBsonGenerator(</span>
+<span class="fc" id="L37">            JsonGenerator.Feature.collectDefaults(), stream);</span>
+        try {
+<span class="fc" id="L39">            objectMapper.writerWithView(view).writeValue(generator, object);</span>
+            // The generator buffers everything so that it can write the
+            // number of bytes to the stream
+<span class="fc" id="L42">            generator.close();</span>
+<span class="nc" id="L43">        } catch (JsonMappingException e) {</span>
+<span class="nc" id="L44">            throw new MongoJsonMappingException(e);</span>
+<span class="nc" id="L45">        } catch (IOException e) {</span>
+<span class="nc" id="L46">            throw new MongoException(&quot;Error writing object out&quot;, e);</span>
+<span class="fc" id="L47">        }</span>
+<span class="fc" id="L48">        return stream.getCount();</span>
+    }
+
+
+    @Override
+    public void encode(BsonWriter writer, T value, EncoderContext encoderContext) {
+<span class="fc" id="L54">        BasicOutputBuffer buffer = new BasicOutputBuffer();</span>
+        try {
+<span class="fc" id="L56">            writeObject(buffer, value);</span>
+<span class="fc" id="L57">            BsonBinaryReader reader = new BsonBinaryReader(new ByteBufferBsonInput(new ByteBufNIO(wrap(buffer.toByteArray()))));</span>
+            try {
+<span class="fc" id="L59">                writer.pipe(reader);</span>
+            } finally {
+<span class="fc" id="L61">                reader.close();</span>
+            }
+        } finally {
+<span class="fc" id="L64">            buffer.close();</span>
+        }
+<span class="fc" id="L66">    }</span>
+
+    @Override
+    public Class&lt;T&gt; getEncoderClass() {
+<span class="fc" id="L70">        return clazz;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

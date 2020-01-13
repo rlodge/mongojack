@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>FindIterableDecorator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal.util</a> &gt; <span class="el_source">FindIterableDecorator.java</span></div><h1>FindIterableDecorator.java</h1><pre class="source lang-java linenums">package org.mongojack.internal.util;
+
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mongodb.Block;
+import com.mongodb.CursorType;
+import com.mongodb.Function;
+import com.mongodb.client.FindIterable;
+import com.mongodb.client.MongoCursor;
+import com.mongodb.client.MongoIterable;
+import com.mongodb.client.model.Collation;
+import com.mongodb.lang.Nullable;
+import org.bson.conversions.Bson;
+import org.mongojack.InitializationRequiredForTransformation;
+import org.mongojack.JacksonCodecRegistry;
+
+import java.util.Collection;
+import java.util.Spliterator;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+
+/**
+ * Wraps a FindIterable so we can map the incoming filters.
+ *
+ * @param &lt;TResult&gt; the type this iterable produces
+ */
+public class FindIterableDecorator&lt;TResult&gt; implements FindIterable&lt;TResult&gt; {
+
+    private final FindIterable&lt;TResult&gt; delegate;
+    private final ObjectMapper objectMapper;
+    private final JavaType type;
+    private final JacksonCodecRegistry codecRegistry;
+
+    public FindIterableDecorator(
+        final FindIterable&lt;TResult&gt; delegate,
+        final ObjectMapper objectMapper,
+        final JavaType type,
+        final JacksonCodecRegistry codecRegistry
+<span class="fc" id="L39">    ) {</span>
+<span class="fc" id="L40">        this.delegate = delegate;</span>
+<span class="fc" id="L41">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L42">        this.type = type;</span>
+<span class="fc" id="L43">        this.codecRegistry = codecRegistry;</span>
+<span class="fc" id="L44">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; filter(final Bson filter) {
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">        if (filter instanceof InitializationRequiredForTransformation) {</span>
+<span class="nc" id="L52">            ((InitializationRequiredForTransformation) filter).initialize(objectMapper, type, codecRegistry);</span>
+<span class="nc" id="L53">            return delegate.filter(filter);</span>
+        }
+<span class="fc" id="L55">        return delegate.filter(DocumentSerializationUtils.serializeFilter(objectMapper, type, filter, codecRegistry));</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; limit(final int limit) {
+<span class="nc" id="L63">        return delegate.limit(limit);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; skip(final int skip) {
+<span class="nc" id="L71">        return delegate.skip(skip);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; maxTime(final long maxTime, final TimeUnit timeUnit) {
+<span class="nc" id="L79">        return delegate.maxTime(maxTime, timeUnit);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; maxAwaitTime(final long maxAwaitTime, final TimeUnit timeUnit) {
+<span class="nc" id="L87">        return delegate.maxAwaitTime(maxAwaitTime, timeUnit);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Deprecated
+    public FindIterable&lt;TResult&gt; modifiers(final Bson modifiers) {
+<span class="nc" id="L96">        return delegate.modifiers(modifiers);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; projection(final Bson projection) {
+<span class="fc" id="L104">        return delegate.projection(projection);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; sort(final Bson sort) {
+<span class="fc" id="L112">        return delegate.sort(sort);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; noCursorTimeout(final boolean noCursorTimeout) {
+<span class="nc" id="L120">        return delegate.noCursorTimeout(noCursorTimeout);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; oplogReplay(final boolean oplogReplay) {
+<span class="nc" id="L128">        return delegate.oplogReplay(oplogReplay);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; partial(final boolean partial) {
+<span class="nc" id="L136">        return delegate.partial(partial);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; cursorType(final CursorType cursorType) {
+<span class="nc" id="L144">        return delegate.cursorType(cursorType);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; batchSize(final int batchSize) {
+<span class="nc" id="L152">        return delegate.batchSize(batchSize);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; collation(final Collation collation) {
+<span class="nc" id="L160">        return delegate.collation(collation);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; comment(final String comment) {
+<span class="nc" id="L168">        return delegate.comment(comment);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; hint(final Bson hint) {
+<span class="nc" id="L176">        return delegate.hint(hint);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; hintString(final String hint) {
+<span class="nc" id="L184">        return delegate.hintString(hint);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; max(final Bson max) {
+<span class="nc" id="L192">        return delegate.max(max);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; min(final Bson min) {
+<span class="nc" id="L200">        return delegate.min(min);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Deprecated
+    public FindIterable&lt;TResult&gt; maxScan(final long maxScan) {
+<span class="nc" id="L209">        return delegate.maxScan(maxScan);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; returnKey(final boolean returnKey) {
+<span class="nc" id="L217">        return delegate.returnKey(returnKey);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public FindIterable&lt;TResult&gt; showRecordId(final boolean showRecordId) {
+<span class="nc" id="L225">        return delegate.showRecordId(showRecordId);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Deprecated
+    public FindIterable&lt;TResult&gt; snapshot(final boolean snapshot) {
+<span class="nc" id="L234">        return delegate.snapshot(snapshot);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MongoCursor&lt;TResult&gt; iterator() {
+<span class="fc" id="L242">        return delegate.iterator();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public MongoCursor&lt;TResult&gt; cursor() {
+<span class="nc" id="L250">        return delegate.cursor();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Nullable
+    public TResult first() {
+<span class="fc" id="L259">        return delegate.first();</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;U&gt; MongoIterable&lt;U&gt; map(final Function&lt;TResult, U&gt; mapper) {
+<span class="nc" id="L267">        return delegate.map(mapper);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    @Deprecated
+    public void forEach(final Block&lt;? super TResult&gt; block) {
+<span class="nc" id="L276">        delegate.forEach(block);</span>
+<span class="nc" id="L277">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public &lt;A extends Collection&lt;? super TResult&gt;&gt; A into(final A target) {
+<span class="fc" id="L284">        return delegate.into(target);</span>
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void forEach(final Consumer&lt;? super TResult&gt; action) {
+<span class="nc" id="L292">        delegate.forEach(action);</span>
+<span class="nc" id="L293">    }</span>
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Spliterator&lt;TResult&gt; spliterator() {
+<span class="nc" id="L300">        return delegate.spliterator();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

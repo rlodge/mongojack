@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JacksonAccessor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal.util</a> &gt; <span class="el_source">JacksonAccessor.java</span></div><h1>JacksonAccessor.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2011 VZ Netzwerke Ltd
+ * Copyright 2014 devbliss GmbH
+ * 
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.mongojack.internal.util;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationConfig;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.ser.BeanPropertyWriter;
+import com.fasterxml.jackson.databind.ser.DefaultSerializerProvider;
+import com.fasterxml.jackson.databind.ser.SerializerFactory;
+import com.fasterxml.jackson.databind.ser.std.BeanSerializerBase;
+
+/**
+ * Accesses things in Jackson that usually aren't accessible. Here be dragons.
+ */
+<span class="nc" id="L40">public class JacksonAccessor {</span>
+
+    public static JsonDeserializer findDeserializer(ObjectMapper objectMapper,
+            JavaType type) {
+<span class="nc" id="L44">        return invoke(objectMapper, objectMapperFindRootDeserializer,</span>
+                JsonDeserializer.class,
+<span class="nc" id="L46">                createDeserializationContext(objectMapper), type);</span>
+    }
+
+    public static DeserializationContext createDeserializationContext(
+            ObjectMapper objectMapper) {
+<span class="nc" id="L51">        return invoke(objectMapper, objectMapperCreateDeserializationContext,</span>
+                DeserializationContext.class, null,
+<span class="nc" id="L53">                objectMapper.getDeserializationConfig());</span>
+    }
+
+    public static BeanPropertyWriter findPropertyWriter(
+            BeanSerializerBase serializer, String propertyName) {
+<span class="fc" id="L58">        BeanPropertyWriter[] props = get(serializer, beanSerializerBaseProps,</span>
+                BeanPropertyWriter[].class);
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        for (BeanPropertyWriter prop : props) {</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            if (propertyName.equals(prop.getName())) {</span>
+<span class="fc" id="L62">                return prop;</span>
+            }
+        }
+<span class="fc" id="L65">        return null;</span>
+    }
+
+    public static SerializerFactory getSerializerFactory(
+            ObjectMapper objectMapper) {
+<span class="fc" id="L70">        return get(objectMapper, objectMapperSerializerFactory,</span>
+                SerializerFactory.class);
+    }
+
+    public static SerializerProvider getSerializerProvider(
+            ObjectMapper objectMapper) {
+<span class="fc" id="L76">        DefaultSerializerProvider serializerProvider = (DefaultSerializerProvider) objectMapper</span>
+<span class="fc" id="L77">                .getSerializerProvider();</span>
+<span class="fc" id="L78">        return serializerProvider.createInstance(</span>
+<span class="fc" id="L79">                objectMapper.getSerializationConfig(),</span>
+<span class="fc" id="L80">                getSerializerFactory(objectMapper));</span>
+    }
+
+    public static JsonSerializer findValueSerializer(
+            SerializerProvider serializerProvider, JavaType javaType) {
+        try {
+<span class="fc" id="L86">            return serializerProvider.findValueSerializer(javaType, null);</span>
+<span class="nc" id="L87">        } catch (JsonMappingException e) {</span>
+<span class="nc" id="L88">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    public static JsonSerializer findValueSerializer(
+            SerializerProvider serializerProvider, Class clazz) {
+        try {
+<span class="fc" id="L95">            return serializerProvider.findValueSerializer(clazz, null);</span>
+<span class="nc" id="L96">        } catch (JsonMappingException e) {</span>
+<span class="nc" id="L97">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    private static final Method objectMapperCreateDeserializationContext;
+    private static final Method objectMapperFindRootDeserializer;
+    private static final Field beanSerializerBaseProps;
+    private static final Field objectMapperSerializerFactory;
+
+    static {
+<span class="fc" id="L107">        objectMapperCreateDeserializationContext = findMethod(</span>
+                ObjectMapper.class, &quot;createDeserializationContext&quot;,
+                new Class[] {JsonParser.class, DeserializationConfig.class});
+<span class="fc" id="L110">        objectMapperFindRootDeserializer = findMethod(ObjectMapper.class,</span>
+                &quot;_findRootDeserializer&quot;, new Class[] {
+                        DeserializationContext.class, JavaType.class});
+<span class="fc" id="L113">        beanSerializerBaseProps = findField(BeanSerializerBase.class, &quot;_props&quot;);</span>
+<span class="fc" id="L114">        objectMapperSerializerFactory = findField(ObjectMapper.class,</span>
+                &quot;_serializerFactory&quot;);
+<span class="fc" id="L116">    }</span>
+
+    private static Method findMethod(Class clazz, String name, Class[] argTypes) {
+        try {
+<span class="fc" id="L120">            Method method = clazz.getDeclaredMethod(name, argTypes);</span>
+<span class="fc" id="L121">            method.setAccessible(true);</span>
+<span class="fc" id="L122">            return method;</span>
+<span class="nc" id="L123">        } catch (NoSuchMethodException e) {</span>
+<span class="nc" id="L124">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    private static Field findField(Class clazz, String name) {
+        try {
+<span class="fc" id="L130">            Field field = clazz.getDeclaredField(name);</span>
+<span class="fc" id="L131">            field.setAccessible(true);</span>
+<span class="fc" id="L132">            return field;</span>
+<span class="nc" id="L133">        } catch (NoSuchFieldException e) {</span>
+<span class="nc" id="L134">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    private static &lt;T&gt; T get(Object object, Field field, Class&lt;T&gt; type) {
+        try {
+<span class="fc" id="L140">            return (T) field.get(object);</span>
+<span class="nc" id="L141">        } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L142">            throw new RuntimeException(e);</span>
+        }
+    }
+
+    private static &lt;T&gt; T invoke(Object object, Method method,
+            Class&lt;T&gt; returnType, Object... args) {
+        try {
+<span class="nc" id="L149">            return (T) method.invoke(object, args);</span>
+<span class="nc" id="L150">        } catch (IllegalAccessException e) {</span>
+<span class="nc" id="L151">            throw new RuntimeException(e);</span>
+<span class="nc" id="L152">        } catch (InvocationTargetException e) {</span>
+<span class="nc" id="L153">            throw new RuntimeException(e);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

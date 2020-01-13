@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>MongoJackModule.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal</a> &gt; <span class="el_source">MongoJackModule.java</span></div><h1>MongoJackModule.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2011 VZ Netzwerke Ltd
+ * Copyright 2014 devbliss GmbH
+ * 
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.mongojack.internal;
+
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.mongojack.internal.stream.ServerErrorProblemHandler;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.Version;
+import com.fasterxml.jackson.databind.Module;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+/**
+ * The ObjectID serialising module
+ * 
+ * @author James Roper
+ * @since 1.0
+ */
+<span class="fc" id="L34">public class MongoJackModule extends Module {</span>
+<span class="fc" id="L35">    public static final Module INSTANCE = new MongoJackModule();</span>
+<span class="fc" id="L36">    public static final Module JAVATIME = new JavaTimeModule();</span>
+
+    /**
+     * Configure the given object mapper to be used with MongoJack. Please call
+     * this method rather than calling
+     * objectMapper.with(MongoJacksonMapperModule.INSTANCE), because Jacksons
+     * module system doesn't allow MongoJack to do all the configuration it
+     * needs to do. This method will do that configuration though.
+     * 
+     * @param objectMapper
+     *            The object mapper to configure
+     * @return This object mapper (for chaining)
+     */
+    public static ObjectMapper configure(ObjectMapper objectMapper) {
+<span class="fc" id="L50">        objectMapper.registerModule(INSTANCE);</span>
+
+        // register java time module
+<span class="fc" id="L53">        objectMapper.registerModule(JAVATIME);</span>
+
+        // disable serialize dates as timestamps because we have fewer runtime errors that way
+<span class="fc" id="L56">        objectMapper.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);</span>
+
+<span class="fc" id="L58">        objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);</span>
+<span class="fc" id="L59">        return objectMapper;</span>
+    }
+
+    @Override
+    public String getModuleName() {
+<span class="fc" id="L64">        return &quot;Object ID Module&quot;;</span>
+    }
+
+    @Override
+    public Version version() {
+<span class="fc" id="L69">        return new Version(1, 0, 0, null, &quot;org.mongojack&quot;, &quot;mongojack&quot;);</span>
+    }
+
+    @Override
+    public void setupModule(SetupContext context) {
+<span class="fc" id="L74">        MongoAnnotationIntrospector annotationIntrospector = new MongoAnnotationIntrospector(</span>
+<span class="fc" id="L75">                context.getTypeFactory());</span>
+<span class="fc" id="L76">        context.insertAnnotationIntrospector(annotationIntrospector);</span>
+        // Only include non null properties, this makes it possible to use
+        // object templates for querying and
+        // partial object retrieving
+<span class="fc" id="L80">        context.addDeserializationProblemHandler(new ServerErrorProblemHandler());</span>
+<span class="fc" id="L81">        context.addSerializers(new MongoJackSerializers());</span>
+<span class="fc" id="L82">        context.addDeserializers(new MongoJackDeserializers());</span>
+<span class="fc" id="L83">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

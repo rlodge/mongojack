@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>JacksonDecoder.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal.stream</a> &gt; <span class="el_source">JacksonDecoder.java</span></div><h1>JacksonDecoder.java</h1><pre class="source lang-java linenums">package org.mongojack.internal.stream;
+
+import com.fasterxml.jackson.core.io.IOContext;
+import com.fasterxml.jackson.core.util.BufferRecycler;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.bson.BsonBinaryWriter;
+import org.bson.BsonReader;
+import org.bson.codecs.Decoder;
+import org.bson.codecs.DecoderContext;
+import org.bson.io.BasicOutputBuffer;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+
+public class JacksonDecoder&lt;T&gt; implements Decoder&lt;T&gt; {
+
+    private final Class&lt;T&gt; clazz;
+    private final ObjectMapper objectMapper;
+    private final Class&lt;?&gt; view;
+
+<span class="fc" id="L22">    public JacksonDecoder(Class&lt;T&gt; clazz, Class&lt;?&gt; view, ObjectMapper objectMapper) {</span>
+<span class="fc" id="L23">        this.clazz = clazz;</span>
+<span class="fc" id="L24">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L25">        this.view = view;</span>
+<span class="fc" id="L26">    }</span>
+
+    private T decode(byte[] b) {
+        try {
+<span class="fc" id="L30">            return decode(new ByteArrayInputStream(b));</span>
+<span class="nc" id="L31">        } catch (IOException e) {</span>
+            // Not possible
+<span class="nc" id="L33">            throw new RuntimeException(</span>
+                    &quot;IOException encountered while reading from a byte array input stream&quot;,
+                    e);
+        }
+    }
+
+    private T decode(InputStream in)
+            throws IOException {
+<span class="fc" id="L41">        JacksonDBObject&lt;T&gt; decoded = new JacksonDBObject&lt;T&gt;();</span>
+<span class="fc" id="L42">        try (DBDecoderBsonParser parser = new DBDecoderBsonParser(</span>
+                new IOContext(new BufferRecycler(), in, false), 0, in, decoded,
+                objectMapper)) {
+<span class="fc" id="L45">            return objectMapper.reader().forType(clazz).withView(view).readValue(parser);</span>
+        }
+    }
+
+    @Override
+    public T decode(BsonReader reader, DecoderContext decoderContext) {
+<span class="fc" id="L51">        BasicOutputBuffer bob = new BasicOutputBuffer();</span>
+<span class="fc" id="L52">        BsonBinaryWriter binaryWriter = new BsonBinaryWriter(bob);</span>
+        try {
+<span class="fc" id="L54">        binaryWriter.pipe(reader);</span>
+<span class="fc" id="L55">        return decode(bob.getInternalBuffer());</span>
+        } finally {
+<span class="fc" id="L57">            binaryWriter.close();</span>
+<span class="fc" id="L58">            bob.close();</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

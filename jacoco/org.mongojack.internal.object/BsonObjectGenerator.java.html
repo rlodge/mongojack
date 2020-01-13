@@ -1,0 +1,517 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>BsonObjectGenerator.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal.object</a> &gt; <span class="el_source">BsonObjectGenerator.java</span></div><h1>BsonObjectGenerator.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2011 VZ Netzwerke Ltd
+ * Copyright 2014 devbliss GmbH
+ * 
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.mongojack.internal.object;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.mongojack.internal.util.VersionUtils;
+
+import com.fasterxml.jackson.core.Base64Variant;
+import com.fasterxml.jackson.core.JsonGenerationException;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.JsonStreamContext;
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.core.ObjectCodec;
+import com.fasterxml.jackson.core.SerializableString;
+import com.fasterxml.jackson.core.TreeNode;
+import com.fasterxml.jackson.core.Version;
+import com.mongodb.BasicDBObject;
+import com.mongodb.DBObject;
+
+/**
+ * JSON generator that actually generates a BSON object
+ *
+ * @author James Roper
+ * @since 1.0
+ */
+<span class="fc" id="L48">public class BsonObjectGenerator extends JsonGenerator {</span>
+    private Node rootNode;
+    private ObjectCodec objectCodec;
+    private Node currentNode;
+<span class="fc" id="L52">    private boolean closed = false;</span>
+
+    public DBObject getDBObject() {
+<span class="nc bnc" id="L55" title="All 2 branches missed.">        if (rootNode instanceof ObjectNode) {</span>
+<span class="nc" id="L56">            return ((ObjectNode) rootNode).get();</span>
+        } else {
+<span class="nc" id="L58">            throw new IllegalStateException(&quot;Object node was not generated&quot;);</span>
+        }
+    }
+
+    public Object getValue() {
+<span class="fc" id="L63">        return rootNode.get();</span>
+    }
+
+    @Override
+    public Version version() {
+<span class="nc" id="L68">        return VersionUtils.VERSION;</span>
+    }
+
+    @Override
+    public JsonGenerator enable(Feature f) {
+<span class="nc" id="L73">        return this;</span>
+    }
+
+    @Override
+    public JsonGenerator disable(Feature f) {
+<span class="nc" id="L78">        return this;</span>
+    }
+
+    @Override
+    public boolean isEnabled(Feature f) {
+<span class="nc" id="L83">        return false;</span>
+    }
+
+    @Override
+    public int getFeatureMask() {
+<span class="nc" id="L88">        return JsonGenerator.Feature.collectDefaults();</span>
+    }
+
+    @Override
+<span class="nc" id="L92">    public JsonGenerator setFeatureMask(int i) { return this; }</span>
+
+    @Override
+    public JsonGenerator setCodec(ObjectCodec oc) {
+<span class="nc" id="L96">        objectCodec = oc;</span>
+<span class="nc" id="L97">        return this;</span>
+    }
+
+    @Override
+    public ObjectCodec getCodec() {
+<span class="nc" id="L102">        return objectCodec;</span>
+    }
+
+    @Override
+    public JsonGenerator useDefaultPrettyPrinter() {
+<span class="nc" id="L107">        return this;</span>
+    }
+
+    @Override
+    public void writeStartArray() throws IOException {
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        if (rootNode == null) {</span>
+<span class="fc" id="L113">            rootNode = new ArrayNode(null);</span>
+<span class="fc" id="L114">            currentNode = rootNode;</span>
+        } else {
+<span class="fc" id="L116">            currentNode = new ArrayNode(currentNode);</span>
+        }
+<span class="fc" id="L118">    }</span>
+
+    @Override
+    public void writeEndArray() throws IOException {
+<span class="fc" id="L122">        Object array = currentNode.get();</span>
+<span class="fc" id="L123">        currentNode = currentNode.getParent();</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        if (currentNode != null) {</span>
+<span class="fc" id="L125">            currentNode.set(array);</span>
+        }
+<span class="fc" id="L127">    }</span>
+
+    @Override
+    public void writeStartObject() throws IOException {
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        if (rootNode == null) {</span>
+<span class="fc" id="L132">            rootNode = new ObjectNode(null);</span>
+<span class="fc" id="L133">            currentNode = rootNode;</span>
+        } else {
+<span class="fc" id="L135">            currentNode = new ObjectNode(currentNode);</span>
+        }
+<span class="fc" id="L137">    }</span>
+
+    @Override
+    public void writeEndObject() throws IOException {
+<span class="fc" id="L141">        Object object = currentNode.get();</span>
+<span class="fc" id="L142">        currentNode = currentNode.getParent();</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (currentNode != null) {</span>
+<span class="fc" id="L144">            currentNode.set(object);</span>
+        }
+<span class="fc" id="L146">    }</span>
+
+    @Override
+    public void writeFieldName(String name) throws IOException {
+<span class="fc" id="L150">        currentNode.setName(name);</span>
+<span class="fc" id="L151">    }</span>
+
+    @Override
+    public void writeString(String text) throws IOException {
+<span class="fc" id="L155">        setValue(text);</span>
+<span class="fc" id="L156">    }</span>
+
+    @Override
+    public void writeString(char[] text, int offset, int len)
+            throws IOException {
+<span class="nc" id="L161">        setValue(new String(text, offset, len));</span>
+<span class="nc" id="L162">    }</span>
+
+    @Override
+    public void writeRawUTF8String(byte[] text, int offset, int length)
+            throws IOException {
+<span class="nc" id="L167">        setValue(new String(text, offset, length, &quot;UTF-8&quot;));</span>
+<span class="nc" id="L168">    }</span>
+
+    @Override
+    public void writeUTF8String(byte[] text, int offset, int length)
+            throws IOException {
+<span class="nc" id="L173">        setValue(new String(text, offset, length, &quot;UTF-8&quot;));</span>
+<span class="nc" id="L174">    }</span>
+
+    @Override
+    public void writeRaw(String text) throws IOException {
+<span class="nc" id="L178">        throw new UnsupportedOperationException(&quot;Writing raw not supported&quot;);</span>
+    }
+
+    @Override
+    public void writeRaw(String text, int offset, int len) throws IOException {
+<span class="nc" id="L183">        throw new UnsupportedOperationException(&quot;Writing raw not supported&quot;);</span>
+    }
+
+    @Override
+    public void writeRaw(char[] text, int offset, int len) throws IOException {
+<span class="nc" id="L188">        throw new UnsupportedOperationException(&quot;Writing raw not supported&quot;);</span>
+    }
+
+    @Override
+    public void writeRaw(char c) throws IOException {
+<span class="nc" id="L193">        throw new UnsupportedOperationException(&quot;Writing raw not supported&quot;);</span>
+    }
+
+    @Override
+    public void writeRawValue(String text) throws IOException {
+<span class="nc" id="L198">        setValue(text);</span>
+<span class="nc" id="L199">    }</span>
+
+    @Override
+    public void writeRawValue(String text, int offset, int len)
+            throws IOException {
+<span class="nc" id="L204">        setValue(text.substring(offset, offset + len));</span>
+<span class="nc" id="L205">    }</span>
+
+    @Override
+    public void writeRawValue(char[] text, int offset, int len)
+            throws IOException {
+<span class="nc" id="L210">        setValue(new String(text, offset, len));</span>
+<span class="nc" id="L211">    }</span>
+
+    @Override
+    public void writeBinary(Base64Variant b64variant, byte[] data, int offset,
+            int len) throws IOException {
+<span class="nc bnc" id="L216" title="All 4 branches missed.">        if (offset != 0 || len != data.length) {</span>
+<span class="nc" id="L217">            byte[] subset = new byte[len];</span>
+<span class="nc" id="L218">            System.arraycopy(data, offset, subset, 0, len);</span>
+<span class="nc" id="L219">            data = subset;</span>
+        }
+<span class="nc" id="L221">        setValue(data);</span>
+<span class="nc" id="L222">    }</span>
+
+    @Override
+    public int writeBinary(Base64Variant b64variant, InputStream data,
+            int dataLength) throws IOException, JsonGenerationException {
+<span class="nc" id="L227">        throw new UnsupportedOperationException();</span>
+    }
+
+    @Override
+    public void writeNumber(int v) throws IOException {
+<span class="fc" id="L232">        setValue(v);</span>
+<span class="fc" id="L233">    }</span>
+
+    @Override
+    public void writeNumber(long v) throws IOException {
+<span class="nc" id="L237">        setValue(v);</span>
+<span class="nc" id="L238">    }</span>
+
+    @Override
+    public void writeNumber(BigInteger v) throws IOException {
+<span class="nc" id="L242">        setValue(v);</span>
+<span class="nc" id="L243">    }</span>
+
+    @Override
+    public void writeNumber(double d) throws IOException {
+<span class="nc" id="L247">        setValue(d);</span>
+<span class="nc" id="L248">    }</span>
+
+    @Override
+    public void writeNumber(float f) throws IOException {
+<span class="nc" id="L252">        setValue(f);</span>
+<span class="nc" id="L253">    }</span>
+
+    @Override
+    public void writeNumber(BigDecimal dec) throws IOException {
+<span class="nc" id="L257">        setValue(dec);</span>
+<span class="nc" id="L258">    }</span>
+
+    @Override
+    public void writeNumber(String encodedValue) throws IOException,
+            UnsupportedOperationException {
+<span class="nc" id="L263">        setValue(encodedValue);</span>
+<span class="nc" id="L264">    }</span>
+
+    @Override
+    public void writeBoolean(boolean state) throws IOException {
+<span class="nc" id="L268">        setValue(state);</span>
+<span class="nc" id="L269">    }</span>
+
+    @Override
+    public void writeNull() throws IOException {
+<span class="nc" id="L273">        setValue(null);</span>
+<span class="nc" id="L274">    }</span>
+
+    @Override
+    public void writeObject(Object pojo) throws IOException {
+<span class="fc" id="L278">        setValue(pojo);</span>
+<span class="fc" id="L279">    }</span>
+
+    @Override
+    public void writeFieldName(SerializableString name) throws IOException,
+            JsonGenerationException {
+<span class="fc" id="L284">        writeFieldName(name.getValue());</span>
+<span class="fc" id="L285">    }</span>
+
+    @Override
+    public void writeString(SerializableString text) throws IOException,
+            JsonGenerationException {
+<span class="nc" id="L290">        setValue(text.getValue());</span>
+<span class="nc" id="L291">    }</span>
+
+    @Override
+    public void writeTree(TreeNode rootNode) throws IOException,
+            JsonProcessingException {
+<span class="nc" id="L296">        throw new UnsupportedClassVersionError(</span>
+                &quot;Writing JSON nodes not supported&quot;);
+    }
+
+    @Override
+    public void copyCurrentEvent(JsonParser jp) throws IOException {
+<span class="nc" id="L302">        JsonToken t = jp.getCurrentToken();</span>
+<span class="nc bnc" id="L303" title="All 13 branches missed.">        switch (t) {</span>
+            case START_OBJECT:
+<span class="nc" id="L305">                writeStartObject();</span>
+<span class="nc" id="L306">                break;</span>
+            case END_OBJECT:
+<span class="nc" id="L308">                writeEndObject();</span>
+<span class="nc" id="L309">                break;</span>
+            case START_ARRAY:
+<span class="nc" id="L311">                writeStartArray();</span>
+<span class="nc" id="L312">                break;</span>
+            case END_ARRAY:
+<span class="nc" id="L314">                writeEndArray();</span>
+<span class="nc" id="L315">                break;</span>
+            case FIELD_NAME:
+<span class="nc" id="L317">                writeFieldName(jp.getCurrentName());</span>
+<span class="nc" id="L318">                break;</span>
+            case VALUE_STRING:
+<span class="nc bnc" id="L320" title="All 2 branches missed.">                if (jp.hasTextCharacters()) {</span>
+<span class="nc" id="L321">                    writeString(jp.getTextCharacters(), jp.getTextOffset(),</span>
+<span class="nc" id="L322">                            jp.getTextLength());</span>
+                } else {
+<span class="nc" id="L324">                    writeString(jp.getText());</span>
+                }
+<span class="nc" id="L326">                break;</span>
+            case VALUE_NUMBER_INT:
+<span class="nc bnc" id="L328" title="All 3 branches missed.">                switch (jp.getNumberType()) {</span>
+                    case INT:
+<span class="nc" id="L330">                        writeNumber(jp.getIntValue());</span>
+<span class="nc" id="L331">                        break;</span>
+                    case BIG_INTEGER:
+<span class="nc" id="L333">                        writeNumber(jp.getBigIntegerValue());</span>
+<span class="nc" id="L334">                        break;</span>
+                    default:
+<span class="nc" id="L336">                        writeNumber(jp.getLongValue());</span>
+                }
+<span class="nc" id="L338">                break;</span>
+            case VALUE_NUMBER_FLOAT:
+<span class="nc bnc" id="L340" title="All 3 branches missed.">                switch (jp.getNumberType()) {</span>
+                    case BIG_DECIMAL:
+<span class="nc" id="L342">                        writeNumber(jp.getDecimalValue());</span>
+<span class="nc" id="L343">                        break;</span>
+                    case FLOAT:
+<span class="nc" id="L345">                        writeNumber(jp.getFloatValue());</span>
+<span class="nc" id="L346">                        break;</span>
+                    default:
+<span class="nc" id="L348">                        writeNumber(jp.getDoubleValue());</span>
+                }
+<span class="nc" id="L350">                break;</span>
+            case VALUE_TRUE:
+<span class="nc" id="L352">                writeBoolean(true);</span>
+<span class="nc" id="L353">                break;</span>
+            case VALUE_FALSE:
+<span class="nc" id="L355">                writeBoolean(false);</span>
+<span class="nc" id="L356">                break;</span>
+            case VALUE_NULL:
+<span class="nc" id="L358">                writeNull();</span>
+<span class="nc" id="L359">                break;</span>
+            case VALUE_EMBEDDED_OBJECT:
+<span class="nc" id="L361">                writeObject(jp.getEmbeddedObject());</span>
+                break;
+        }
+<span class="nc" id="L364">    }</span>
+
+    @Override
+    public void copyCurrentStructure(JsonParser jp) throws IOException {
+<span class="nc" id="L368">        JsonToken t = jp.getCurrentToken();</span>
+
+        // Let'string handle field-name separately first
+<span class="nc bnc" id="L371" title="All 2 branches missed.">        if (t == JsonToken.FIELD_NAME) {</span>
+<span class="nc" id="L372">            writeFieldName(jp.getCurrentName());</span>
+<span class="nc" id="L373">            t = jp.nextToken();</span>
+            // fall-through to copy the associated value
+        }
+
+<span class="nc bnc" id="L377" title="All 3 branches missed.">        switch (t) {</span>
+            case START_ARRAY:
+<span class="nc" id="L379">                writeStartArray();</span>
+<span class="nc bnc" id="L380" title="All 2 branches missed.">                while (jp.nextToken() != JsonToken.END_ARRAY) {</span>
+<span class="nc" id="L381">                    copyCurrentStructure(jp);</span>
+                }
+<span class="nc" id="L383">                writeEndArray();</span>
+<span class="nc" id="L384">                break;</span>
+            case START_OBJECT:
+<span class="nc" id="L386">                writeStartObject();</span>
+<span class="nc bnc" id="L387" title="All 2 branches missed.">                while (jp.nextToken() != JsonToken.END_OBJECT) {</span>
+<span class="nc" id="L388">                    copyCurrentStructure(jp);</span>
+                }
+<span class="nc" id="L390">                writeEndObject();</span>
+<span class="nc" id="L391">                break;</span>
+            default: // others are simple:
+<span class="nc" id="L393">                copyCurrentEvent(jp);</span>
+        }
+<span class="nc" id="L395">    }</span>
+
+    @Override
+    public JsonStreamContext getOutputContext() {
+<span class="fc" id="L399">        return currentNode;</span>
+    }
+
+    @Override
+    public void flush() throws IOException {
+<span class="fc" id="L404">    }</span>
+
+    @Override
+    public boolean isClosed() {
+<span class="nc" id="L408">        return closed;</span>
+    }
+
+    @Override
+    public void close() throws IOException {
+<span class="nc" id="L413">        closed = true;</span>
+<span class="nc" id="L414">    }</span>
+
+    private void setValue(Object value) {
+<span class="fc bfc" id="L417" title="All 2 branches covered.">        if (rootNode == null) {</span>
+<span class="fc" id="L418">            rootNode = new RootValueNode(value);</span>
+        } else {
+<span class="fc" id="L420">            currentNode.set(value);</span>
+        }
+<span class="fc" id="L422">    }</span>
+
+    /**
+     * A node that we are currently building from
+     */
+    private abstract class Node extends JsonStreamContext {
+        private final Node parent;
+        private String name;
+
+<span class="fc" id="L431">        private Node(Node parent, int contextType) {</span>
+<span class="fc" id="L432">            this.parent = parent;</span>
+<span class="fc" id="L433">            _type = contextType;</span>
+<span class="fc" id="L434">            _index = -1;</span>
+<span class="fc" id="L435">        }</span>
+
+        @Override
+        public Node getParent() {
+<span class="fc" id="L439">            return parent;</span>
+        }
+
+        public void setName(String name) {
+<span class="fc" id="L443">            this.name = name;</span>
+<span class="fc" id="L444">        }</span>
+
+        @Override
+        public String getCurrentName() {
+<span class="fc" id="L448">            return name;</span>
+        }
+
+        abstract void set(Object value);
+
+        abstract Object get();
+    }
+
+    /**
+     * A node that represents an object
+     */
+    private class ObjectNode extends Node {
+        private final BasicDBObject object;
+
+<span class="fc" id="L462">        private ObjectNode(Node parent) {</span>
+<span class="fc" id="L463">            super(parent, JsonStreamContext.TYPE_OBJECT);</span>
+<span class="fc" id="L464">            object = new BasicDBObject();</span>
+<span class="fc" id="L465">        }</span>
+
+        @Override void set(Object value) {
+<span class="fc" id="L468">            object.put(getCurrentName(), value);</span>
+<span class="fc" id="L469">        }</span>
+
+        @Override DBObject get() {
+<span class="fc" id="L472">            return object;</span>
+        }
+    }
+
+    /**
+     * A node that represents an array
+     */
+    private class ArrayNode extends Node {
+<span class="fc" id="L480">        private final List&lt;Object&gt; array = new ArrayList&lt;Object&gt;();</span>
+
+<span class="fc" id="L482">        private ArrayNode(Node parent) {</span>
+<span class="fc" id="L483">            super(parent, JsonStreamContext.TYPE_ARRAY);</span>
+<span class="fc" id="L484">        }</span>
+
+        @Override void set(Object value) {
+<span class="fc" id="L487">            array.add(value);</span>
+<span class="fc" id="L488">        }</span>
+
+        @Override List&lt;Object&gt; get() {
+<span class="fc" id="L491">            return array;</span>
+        }
+    }
+
+    /**
+     * A node that represents a root value, so for example if a String is
+     * serialised, it will just be a String
+     */
+    private class RootValueNode extends Node {
+        private final Object rootValue;
+
+<span class="fc" id="L502">        private RootValueNode(Object rootValue) {</span>
+<span class="fc" id="L503">            super(null, JsonStreamContext.TYPE_ROOT);</span>
+<span class="fc" id="L504">            this.rootValue = rootValue;</span>
+<span class="fc" id="L505">        }</span>
+
+        @Override void set(Object value) {
+<span class="nc" id="L508">            throw new IllegalStateException(</span>
+                    &quot;Cannot write multiple values to a root value node&quot;);
+        }
+
+        @Override Object get() {
+<span class="fc" id="L513">            return rootValue;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

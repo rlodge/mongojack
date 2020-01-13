@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ObjectIdConvertor.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack.internal.stream</a> &gt; <span class="el_source">ObjectIdConvertor.java</span></div><h1>ObjectIdConvertor.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2011 VZ Netzwerke Ltd
+ * Copyright 2014 devbliss GmbH
+ * 
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.mongojack.internal.stream;
+
+import org.bson.types.ObjectId;
+
+/**
+ * Converts bson4jackson ObjectIds to bson ObjectIds
+ * 
+ * @author James Roper
+ * @since 1.1.2
+ */
+<span class="nc" id="L27">public class ObjectIdConvertor {</span>
+
+    public static ObjectId convert(de.undercouch.bson4jackson.types.ObjectId objectId) {
+<span class="fc" id="L30">        return ObjectId.createFromLegacyFormat(objectId.getTime(), objectId.getMachine(), objectId.getInc());</span>
+    }
+
+    public static de.undercouch.bson4jackson.types.ObjectId convert(ObjectId objectId) {
+<span class="fc" id="L34">        byte[] bytes = objectId.toByteArray();</span>
+
+<span class="fc" id="L36">        return new de.undercouch.bson4jackson.types.ObjectId(makeInt(bytes[0], bytes[1], bytes[2], bytes[3]),</span>
+<span class="fc" id="L37">                                                             makeInt(bytes[4], bytes[5], bytes[6], bytes[7]),</span>
+<span class="fc" id="L38">                                                             makeInt(bytes[8], bytes[9], bytes[10], bytes[11]));</span>
+    }
+
+    private static int makeInt(final byte b3, final byte b2, final byte b1, final byte b0) {
+<span class="fc" id="L42">        return (((b3) &lt;&lt; 24) |</span>
+                ((b2 &amp; 0xff) &lt;&lt; 16) |
+                ((b1 &amp; 0xff) &lt;&lt; 8) |
+                ((b0 &amp; 0xff)));
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>

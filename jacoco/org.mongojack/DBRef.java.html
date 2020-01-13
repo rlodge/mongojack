@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>DBRef.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">MongoJack</a> &gt; <a href="index.source.html" class="el_package">org.mongojack</a> &gt; <span class="el_source">DBRef.java</span></div><h1>DBRef.java</h1><pre class="source lang-java linenums">/*
+ * Copyright 2011 VZ Netzwerke Ltd
+ * Copyright 2014 devbliss GmbH
+ *
+ * Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an &quot;AS IS&quot; BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.mongojack;
+
+/**
+ * A database reference object
+ *
+ * @author James Roper
+ * @since 1.2
+ */
+public class DBRef&lt;T, K&gt; {
+    private final K id;
+    private final Class&lt;T&gt; objectClass;
+    private final String collectionName;
+    private final String databaseName;
+
+    /**
+     * Construct a new database reference with the given id and collection name
+     *
+     * @param id             The id of the database reference to construct
+     * @param objectClass    The value class of the collection that the ref is pointing to
+     * @param collectionName The name of the collection
+     * @param databaseName   The database name holding the collection (optional)
+     */
+<span class="fc" id="L39">    public DBRef(K id, final Class&lt;T&gt; objectClass, String collectionName, String databaseName) {</span>
+<span class="fc" id="L40">        this.id = id;</span>
+<span class="fc" id="L41">        this.objectClass = objectClass;</span>
+<span class="fc" id="L42">        this.collectionName = collectionName;</span>
+<span class="fc" id="L43">        this.databaseName = databaseName;</span>
+<span class="fc" id="L44">    }</span>
+
+    /**
+     * Construct a new database reference with the given id and type. The type must be annotated with
+     * {@link MongoCollection}, so that the name can be worked out.
+     *
+     * @param id   The id of the database reference to construct
+     * @param type The type of the object
+     * @throws MongoJsonMappingException If no MongoCollection annotation is found on the type
+     */
+<span class="fc" id="L54">    public DBRef(K id, Class&lt;T&gt; type) throws MongoJsonMappingException {</span>
+<span class="fc" id="L55">        this.id = id;</span>
+<span class="fc" id="L56">        this.objectClass = type;</span>
+<span class="fc" id="L57">        MongoCollection collection = type.getAnnotation(MongoCollection.class);</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">        if (collection == null) {</span>
+<span class="nc" id="L59">            throw new MongoJsonMappingException(&quot;Only types that have the @MongoCollection annotation on them can be used with this constructor&quot;);</span>
+        }
+<span class="fc" id="L61">        this.collectionName = collection.name();</span>
+<span class="fc" id="L62">        this.databaseName = null;</span>
+<span class="fc" id="L63">    }</span>
+
+    /**
+     * Get the ID of this object
+     *
+     * @return The ID of this object
+     */
+    public K getId() {
+<span class="fc" id="L71">        return id;</span>
+    }
+
+    public Class&lt;T&gt; getObjectClass() {
+<span class="nc" id="L75">        return objectClass;</span>
+    }
+
+    /**
+     * Get the name of the collection this object lives in
+     *
+     * @return The name of the collection this object lives in
+     */
+    public String getCollectionName() {
+<span class="fc" id="L84">        return collectionName;</span>
+    }
+
+    public String getDatabaseName() {
+<span class="nc" id="L88">        return databaseName;</span>
+    }
+
+    public JacksonCollectionKey&lt;T&gt; getCollectionKey() {
+<span class="fc" id="L92">        return new JacksonCollectionKey&lt;&gt;(databaseName, collectionName, objectClass);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.5.201910111838</span></div></body></html>
